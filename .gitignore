@@ -1,0 +1,20 @@
+# ROMs, saves, and reference corpora (never commit copyrighted assets)
+*.gba
+*.sav
+*.srm
+corpus/
+.ghidra/
+
+# Bazel build outputs and caches
+bazel-*
+.bazel_cache/
+
+# Clang / IDE / tooling artifacts
+compile_commands.json
+.cache/
+.clangd/
+
+# OS / Editor
+.DS_Store
+*.swp
+*~
