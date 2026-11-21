@@ -23,6 +23,7 @@ constexpr int kArmRegLr = 14;
 
 mCore* g_core = nullptr;
 ARMCore* g_cpu = nullptr;
+std::vector<uint8_t> g_rom_bytes;
 std::array<uint32_t, kViewportWidth * kViewportHeight> g_framebuffer{};
 bool g_bonus_disk_unlocked = false;
 
@@ -118,9 +119,11 @@ bool Init(const RomImage& rom) {
     return false;
   }
 
-  g_core = fe7_mgba_core_create(rom.bytes.data(), rom.bytes.size(), g_framebuffer.data(),
+  g_rom_bytes = rom.bytes;
+  g_core = fe7_mgba_core_create(g_rom_bytes.data(), g_rom_bytes.size(), g_framebuffer.data(),
                                 kViewportWidth);
   if (g_core == nullptr) {
+    g_rom_bytes.clear();
     return false;
   }
 
@@ -141,6 +144,7 @@ void Shutdown() {
     fe7_mgba_core_destroy(g_core);
     g_core = nullptr;
   }
+  g_rom_bytes.clear();
 }
 
 void StepFrame(uint16_t key_input) {

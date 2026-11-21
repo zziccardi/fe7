@@ -27,6 +27,7 @@ struct mCore* fe7_mgba_core_create(const uint8_t* rom_bytes, size_t rom_size,
   }
   mCoreInitConfig(core, NULL);
   if (!core->init(core)) {
+    mCoreConfigDeinit(&core->config);
     core->deinit(core);
     return NULL;
   }
@@ -36,6 +37,7 @@ struct mCore* fe7_mgba_core_create(const uint8_t* rom_bytes, size_t rom_size,
     if (vf != NULL) {
       vf->close(vf);
     }
+    mCoreConfigDeinit(&core->config);
     core->deinit(core);
     return NULL;
   }
@@ -45,6 +47,7 @@ struct mCore* fe7_mgba_core_create(const uint8_t* rom_bytes, size_t rom_size,
 
 void fe7_mgba_core_destroy(struct mCore* core) {
   if (core != NULL) {
+    mCoreConfigDeinit(&core->config);
     core->deinit(core);
   }
 }
