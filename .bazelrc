@@ -1,0 +1,25 @@
+# Common build settings
+common --enable_bzlmod
+build --cxxopt=-std=c++20
+build --host_cxxopt=-std=c++20
+build --repo_env=CC=clang
+build --repo_env=CXX=clang++
+
+# ASan + UBSan + debug bounds checking (default for unit tests and CI)
+build:asan --compilation_mode=dbg
+build:asan --copt=-O1
+build:asan --copt=-g
+build:asan --copt=-fsanitize=address,undefined
+build:asan --copt=-fno-omit-frame-pointer
+build:asan --copt=-DFE7_DEBUG_BOUNDS=1
+build:asan --linkopt=-fsanitize=address,undefined
+test:asan --test_output=errors
+
+# Release build
+build:release --compilation_mode=opt
+build:release --copt=-O2
+build:release --copt=-DNDEBUG
+
+# Headless build (strips SDL3 window/audio deps for high-speed TAS & differential testing)
+build:headless --define=headless=true
+build:headless --copt=-DFE7_HEADLESS=1

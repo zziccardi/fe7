@@ -1,0 +1,20 @@
+module(
+    name = "fe7",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "mgba",
+    build_file = "//third_party/mgba:mgba.BUILD.bazel",
+    integrity = "sha256-+F7rj3j4R/Uheoe9Xi1sEhS0Yf/U7BKcxlYWKrcHyyQ=",
+    patch_args = ["-p1"],
+    patches = ["//third_party/mgba:dispatch_hook.patch"],
+    strip_prefix = "mgba-0.10.4",
+    urls = ["https://github.com/mgba-emu/mgba/archive/refs/tags/0.10.4.tar.gz"],
+)

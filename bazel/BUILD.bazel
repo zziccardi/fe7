@@ -1,0 +1,2 @@
+# Bazel macros package.
+exports_files(["fe7_rules.bzl"])

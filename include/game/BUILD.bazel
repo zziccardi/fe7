@@ -1,0 +1,5 @@
+# Human-gated canonical game headers (Phase 3+).
+package(default_visibility = [
+    "//src/game:__subpackages__",
+    "//src/runtime:__subpackages__",
+])

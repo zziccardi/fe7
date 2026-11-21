@@ -1,0 +1,5 @@
+# Root BUILD.bazel for fe7.
+exports_files([
+    ".clang-format",
+    ".clang-tidy",
+])

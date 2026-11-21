@@ -1,0 +1,61 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "mgba_gba",
+    srcs = glob([
+        "src/arm/*.c",
+        "src/core/*.c",
+        "src/gba/*.c",
+        "src/gba/cart/*.c",
+        "src/gba/cheats/*.c",
+        "src/gba/renderers/*.c",
+        "src/gba/sio/gbp.c",
+        "src/gb/audio.c",
+        "src/util/*.c",
+        "src/util/vfs/vfs-mem.c",
+        "src/util/vfs/vfs-fd.c",
+        "src/third-party/blip_buf/blip_buf.c",
+        "src/third-party/inih/ini.c",
+    ], exclude = [
+        "src/core/scripting.c",
+        "src/gba/extra/**",
+    ]),
+    hdrs = glob([
+        "include/**/*.h",
+        "src/**/*.h",
+    ]),
+    includes = [
+        "include",
+        "src",
+        "src/third-party/blip_buf",
+        "src/third-party/inih",
+    ],
+    defines = [
+        "M_CORE_GBA",
+        "DISABLE_THREADING",
+        "MINIMAL_CORE=2",
+    ] + select({
+        "@platforms//os:macos": [
+            "HAVE_STRLCPY",
+            "HAVE_STRDUP",
+            "HAVE_STRNDUP",
+            "HAVE_LOCALTIME_R",
+            "HAVE_LOCALE",
+            "HAVE_XLOCALE",
+            "HAVE_SNPRINTF_L",
+            "HAVE_STRTOF_L",
+        ],
+        "@platforms//os:linux": [
+            "HAVE_STRDUP",
+            "HAVE_STRNDUP",
+            "HAVE_LOCALTIME_R",
+            "HAVE_LOCALE",
+        ],
+        "//conditions:default": [],
+    }),
+    copts = [
+        "-std=c11",
+        "-Wno-everything",
+    ],
+    visibility = ["//visibility:public"],
+)
