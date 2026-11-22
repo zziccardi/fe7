@@ -7,8 +7,8 @@
 
 #include "runtime/dispatch.h"
 #include "runtime/gba_ptr.h"
+#include "runtime/mgba_bridge.h"
 #include "runtime/rom_loader.h"
-#include "src/runtime/mgba_bridge.h"
 
 namespace fe7 {
 namespace hal {
@@ -21,13 +21,13 @@ constexpr int kArmRegR3 = 3;
 constexpr int kArmRegSp = 13;
 constexpr int kArmRegLr = 14;
 
-mCore* g_core = nullptr;
-ARMCore* g_cpu = nullptr;
+mCore* absl_nullable gCore = nullptr;
+ARMCore* absl_nullable gCpu = nullptr;
 // Owned copy of the loaded ROM image; mGBA's VFileFromConstMemory borrows this pointer directly
-// without copying, so it must outlive g_core.
-std::vector<uint8_t> g_rom_bytes;
-std::array<uint32_t, kViewportWidth * kViewportHeight> g_framebuffer{};
-bool g_bonus_disk_unlocked = false;
+// without copying, so it must outlive gCore.
+std::vector<uint8_t> gRomBytes;
+std::array<uint32_t, kViewportWidth * kViewportHeight> gFramebuffer{};
+bool gBonusDiskUnlocked = false;
 
 // Called by libmgba's patched branch instructions to intercept fallback CPU calls into decompiled
 // native C++20 functions.
@@ -66,72 +66,72 @@ int MgbaDispatchHook(struct ARMCore* cpu, uint32_t pc) {
 
 // Executes an un-decompiled GBA function on the fallback ARM7TDMI CPU on behalf of GbaCall().
 uint32_t MgbaFallbackExec(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
-                          const uint32_t* stack_args, size_t stack_arg_count) {
-  assert(g_cpu != nullptr && "GbaHal not initialized");
+                          const uint32_t* absl_nullable stack_args, size_t stack_arg_count) {
+  assert(gCpu != nullptr && "GbaHal not initialized");
 
   // Save the current ARM7TDMI context so nested Native -> Fallback -> Native -> Fallback calls do
   // not clobber the outer caller's registers, CPSR, or prefetch pipeline.
   std::vector<uint8_t> saved_state(fe7_mgba_state_size());
-  fe7_mgba_save_state(g_cpu, saved_state.data(), saved_state.size());
+  fe7_mgba_save_state(gCpu, saved_state.data(), saved_state.size());
 
   if (stack_arg_count > 0 && stack_args != nullptr) {
     // Push extra arguments onto the GBA stack in AAPCS order (arg 4 at [sp+0], arg 5 at [sp+4]...).
     // SP is restored automatically when saved_state is restored after the call returns.
-    uint32_t sp = static_cast<uint32_t>(fe7_mgba_get_gpr(g_cpu, kArmRegSp));
+    uint32_t sp = static_cast<uint32_t>(fe7_mgba_get_gpr(gCpu, kArmRegSp));
     sp -= static_cast<uint32_t>(stack_arg_count * 4u);
-    fe7_mgba_set_gpr(g_cpu, kArmRegSp, static_cast<int32_t>(sp));
+    fe7_mgba_set_gpr(gCpu, kArmRegSp, static_cast<int32_t>(sp));
     for (size_t i = 0; i < stack_arg_count; ++i) {
-      fe7_mgba_store32(g_cpu, sp + static_cast<uint32_t>(i * 4u), stack_args[i]);
+      fe7_mgba_store32(gCpu, sp + static_cast<uint32_t>(i * 4u), stack_args[i]);
     }
   }
 
-  fe7_mgba_set_gpr(g_cpu, kArmRegR0, static_cast<int32_t>(r0));
-  fe7_mgba_set_gpr(g_cpu, kArmRegR1, static_cast<int32_t>(r1));
-  fe7_mgba_set_gpr(g_cpu, kArmRegR2, static_cast<int32_t>(r2));
-  fe7_mgba_set_gpr(g_cpu, kArmRegR3, static_cast<int32_t>(r3));
+  fe7_mgba_set_gpr(gCpu, kArmRegR0, static_cast<int32_t>(r0));
+  fe7_mgba_set_gpr(gCpu, kArmRegR1, static_cast<int32_t>(r1));
+  fe7_mgba_set_gpr(gCpu, kArmRegR2, static_cast<int32_t>(r2));
+  fe7_mgba_set_gpr(gCpu, kArmRegR3, static_cast<int32_t>(r3));
   // Set LR to kSentinelLr | 1 (Thumb return bit) so `bx lr` / `pop {pc}` lands on kSentinelLr in
   // Thumb mode, letting fe7_mgba_run_until_sentinel detect completion.
-  fe7_mgba_set_gpr(g_cpu, kArmRegLr, static_cast<int32_t>(kSentinelLr | 1u));
-  fe7_mgba_write_pc(g_cpu, gba_addr, 1);
+  fe7_mgba_set_gpr(gCpu, kArmRegLr, static_cast<int32_t>(kSentinelLr | 1u));
+  fe7_mgba_write_pc(gCpu, gba_addr, 1);
 
   constexpr int kMaxFallbackSteps = 10000000;
-  fe7_mgba_run_until_sentinel(g_cpu, kSentinelLr, kMaxFallbackSteps);
+  fe7_mgba_run_until_sentinel(gCpu, kSentinelLr, kMaxFallbackSteps);
 
   // Capture r0 before restoring the outer CPU state so we return the callee's result.
-  const uint32_t result = static_cast<uint32_t>(fe7_mgba_get_gpr(g_cpu, kArmRegR0));
-  fe7_mgba_restore_state(g_cpu, saved_state.data(), saved_state.size());
+  const uint32_t result = static_cast<uint32_t>(fe7_mgba_get_gpr(gCpu, kArmRegR0));
+  fe7_mgba_restore_state(gCpu, saved_state.data(), saved_state.size());
   return result;
 }
 
 // Invokes a GBA BIOS SWI through mGBA's HLE BIOS while preserving all caller GPRs.
 void InvokeSwi(uint8_t swi_num, uint32_t r0, uint32_t r1, uint32_t r2,
-               uint32_t* out_r0 = nullptr) {
-  assert(g_cpu != nullptr && "GbaHal not initialized");
+               uint32_t* absl_nullable out_r0 = nullptr) {
+  assert(gCpu != nullptr && "GbaHal not initialized");
   // Save and restore GPRs because SWI handlers clobber r0..r3 and this may be called mid-frame from
   // native code running inside a fallback dispatch hook.
   std::array<int32_t, 16> saved_gprs{};
-  fe7_mgba_get_gprs(g_cpu, saved_gprs.data());
+  fe7_mgba_get_gprs(gCpu, saved_gprs.data());
 
-  fe7_mgba_set_gpr(g_cpu, kArmRegR0, static_cast<int32_t>(r0));
-  fe7_mgba_set_gpr(g_cpu, kArmRegR1, static_cast<int32_t>(r1));
-  fe7_mgba_set_gpr(g_cpu, kArmRegR2, static_cast<int32_t>(r2));
-  fe7_mgba_swi16(g_cpu, swi_num);
+  fe7_mgba_set_gpr(gCpu, kArmRegR0, static_cast<int32_t>(r0));
+  fe7_mgba_set_gpr(gCpu, kArmRegR1, static_cast<int32_t>(r1));
+  fe7_mgba_set_gpr(gCpu, kArmRegR2, static_cast<int32_t>(r2));
+  fe7_mgba_swi16(gCpu, swi_num);
   if (out_r0 != nullptr) {
-    *out_r0 = static_cast<uint32_t>(fe7_mgba_get_gpr(g_cpu, kArmRegR0));
+    *out_r0 = static_cast<uint32_t>(fe7_mgba_get_gpr(gCpu, kArmRegR0));
   }
 
-  fe7_mgba_set_gprs(g_cpu, saved_gprs.data());
+  fe7_mgba_set_gprs(gCpu, saved_gprs.data());
 }
 
 // Writes host memory into GBA graphics RAM (PAL/VRAM/OAM) in 16-bit little-endian halfwords,
 // because the GBA graphics bus ignores or duplicates 8-bit byte writes.
-void WriteHalfwords(uint32_t dst_addr, const void* src, size_t size_bytes) {
-  assert(g_cpu != nullptr && "GbaHal not initialized");
+void WriteHalfwords(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes) {
+  assert(gCpu != nullptr && "GbaHal not initialized");
   const auto* bytes = static_cast<const uint8_t*>(src);
   for (size_t i = 0; i + 1 < size_bytes; i += 2) {
     const uint16_t val =
         static_cast<uint16_t>(bytes[i]) | static_cast<uint16_t>(bytes[i + 1] << 8);
-    fe7_mgba_store16(g_cpu, dst_addr + static_cast<uint32_t>(i), val);
+    fe7_mgba_store16(gCpu, dst_addr + static_cast<uint32_t>(i), val);
   }
 }
 
@@ -145,17 +145,17 @@ bool Init(const RomImage& rom) {
   }
 
   // Own a copy of the ROM bytes so callers do not have to keep RomImage alive after Init returns.
-  g_rom_bytes = rom.bytes;
-  g_core = fe7_mgba_core_create(g_rom_bytes.data(), g_rom_bytes.size(), g_framebuffer.data(),
-                                kViewportWidth);
-  if (g_core == nullptr) {
-    g_rom_bytes.clear();
+  gRomBytes = rom.bytes;
+  gCore = fe7_mgba_core_create(gRomBytes.data(), gRomBytes.size(), gFramebuffer.data(),
+                               kViewportWidth);
+  if (gCore == nullptr) {
+    gRomBytes.clear();
     return false;
   }
 
-  fe7_mgba_get_gba_ptrs(g_core, &g_mem.ewram, &g_mem.iwram, &g_mem.rom, &g_mem.rom_size, &g_cpu);
+  fe7_mgba_get_gba_ptrs(gCore, &gMem.ewram, &gMem.iwram, &gMem.rom, &gMem.rom_size, &gCpu);
 
-  // Wire both directions of the dispatch table once g_mem and g_cpu are valid.
+  // Wire both directions of the dispatch table once gMem and gCpu are valid.
   fe7_mgba_dispatch_hook = &MgbaDispatchHook;
   SetFallbackExecutor(&MgbaFallbackExec);
   link::Init();
@@ -163,65 +163,65 @@ bool Init(const RomImage& rom) {
 }
 
 void Shutdown() {
-  // Detach hooks and clear g_mem before destroying g_core so no callback can touch freed memory.
+  // Detach hooks and clear gMem before destroying gCore so no callback can touch freed memory.
   fe7_mgba_dispatch_hook = nullptr;
   SetFallbackExecutor(nullptr);
-  g_mem = GbaMemoryMap{};
-  g_cpu = nullptr;
-  if (g_core != nullptr) {
-    fe7_mgba_core_destroy(g_core);
-    g_core = nullptr;
+  gMem = GbaMemoryMap{};
+  gCpu = nullptr;
+  if (gCore != nullptr) {
+    fe7_mgba_core_destroy(gCore);
+    gCore = nullptr;
   }
-  // Free g_rom_bytes only after g_core is destroyed, since mGBA holds a non-owning pointer to it.
-  g_rom_bytes.clear();
+  // Free gRomBytes only after gCore is destroyed, since mGBA holds a non-owning pointer to it.
+  gRomBytes.clear();
 }
 
 void StepFrame(uint16_t key_input) {
-  assert(g_core != nullptr && "GbaHal not initialized");
-  fe7_mgba_core_step_frame(g_core, key_input);
+  assert(gCore != nullptr && "GbaHal not initialized");
+  fe7_mgba_core_step_frame(gCore, key_input);
 }
 
-const uint32_t* GetFramebuffer() { return g_framebuffer.data(); }
+const uint32_t* absl_nonnull GetFramebuffer() { return gFramebuffer.data(); }
 
 uint8_t MmioRead8(uint32_t addr) {
-  assert(g_cpu != nullptr);
-  return fe7_mgba_load8(g_cpu, addr);
+  assert(gCpu != nullptr);
+  return fe7_mgba_load8(gCpu, addr);
 }
 
 uint16_t MmioRead16(uint32_t addr) {
-  assert(g_cpu != nullptr);
-  return fe7_mgba_load16(g_cpu, addr);
+  assert(gCpu != nullptr);
+  return fe7_mgba_load16(gCpu, addr);
 }
 
 uint32_t MmioRead32(uint32_t addr) {
-  assert(g_cpu != nullptr);
-  return fe7_mgba_load32(g_cpu, addr);
+  assert(gCpu != nullptr);
+  return fe7_mgba_load32(gCpu, addr);
 }
 
 void MmioWrite8(uint32_t addr, uint8_t value) {
-  assert(g_cpu != nullptr);
-  fe7_mgba_store8(g_cpu, addr, value);
+  assert(gCpu != nullptr);
+  fe7_mgba_store8(gCpu, addr, value);
 }
 
 void MmioWrite16(uint32_t addr, uint16_t value) {
-  assert(g_cpu != nullptr);
-  fe7_mgba_store16(g_cpu, addr, value);
+  assert(gCpu != nullptr);
+  fe7_mgba_store16(gCpu, addr, value);
 }
 
 void MmioWrite32(uint32_t addr, uint32_t value) {
-  assert(g_cpu != nullptr);
-  fe7_mgba_store32(g_cpu, addr, value);
+  assert(gCpu != nullptr);
+  fe7_mgba_store32(gCpu, addr, value);
 }
 
-void PalWrite(uint32_t dst_addr, const void* src, size_t size_bytes) {
+void PalWrite(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes) {
   WriteHalfwords(dst_addr, src, size_bytes);
 }
 
-void VramWrite(uint32_t dst_addr, const void* src, size_t size_bytes) {
+void VramWrite(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes) {
   WriteHalfwords(dst_addr, src, size_bytes);
 }
 
-void OamWrite(uint32_t dst_addr, const void* src, size_t size_bytes) {
+void OamWrite(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes) {
   WriteHalfwords(dst_addr, src, size_bytes);
 }
 
@@ -266,8 +266,8 @@ uint32_t SwiSqrt(uint32_t value) {
 namespace link {
 void Init() {}
 void Poll() {}
-bool IsBonusDiskUnlocked() { return g_bonus_disk_unlocked; }
-void SetBonusDiskUnlocked(bool unlocked) { g_bonus_disk_unlocked = unlocked; }
+bool IsBonusDiskUnlocked() { return gBonusDiskUnlocked; }
+void SetBonusDiskUnlocked(bool unlocked) { gBonusDiskUnlocked = unlocked; }
 }  // namespace link
 
 void VideoSubmitFrame() {}

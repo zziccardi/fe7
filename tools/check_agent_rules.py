@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforces Google 'C-with-types' C++20 guardrails on src/game/ and include/game/."""
+"""Enforces Google 'C-with-types' C++20 guardrails on game/."""
 
 import pathlib
 import re
@@ -11,6 +11,8 @@ FORBIDDEN_GAME_PATTERNS = [
     (re.compile(r"\bvirtual\b"), "virtual methods are forbidden in game code"),
     (re.compile(r"\bstd::(vector|string|map|unordered_map|set|unordered_set|list|deque)\b"),
      "Heap-allocating STL containers are forbidden in game code during Phases 1-4"),
+    (re.compile(r"\babsl::(flat_hash_map|flat_hash_set|node_hash_map|node_hash_set|btree_map|btree_set|InlinedVector)\b"),
+     "Heap-allocating Abseil containers are forbidden in game code during Phases 1-4"),
     (re.compile(r"\b(__asm__|asm)\s*\("), "Inline assembly is forbidden in game code"),
     (re.compile(r"\breinterpret_cast\s*<"), "Raw reinterpret_cast is forbidden in game code; use GbaPtr<T> or ProcAs<T>()"),
 ]
@@ -26,11 +28,7 @@ def strip_comments(line: str) -> str:
 
 
 def is_game_path(path: pathlib.Path) -> bool:
-  parts = path.parts
-  for i in range(len(parts) - 1):
-    if parts[i] in ("src", "include") and parts[i + 1] == "game":
-      return True
-  return False
+  return "game" in path.parts
 
 
 def check_file(path: pathlib.Path) -> list[str]:
@@ -53,7 +51,7 @@ def check_file(path: pathlib.Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-  roots = [pathlib.Path(a) for a in argv[1:]] or [pathlib.Path("src"), pathlib.Path("include")]
+  roots = [pathlib.Path(a) for a in argv[1:]] or [pathlib.Path("game")]
   all_errors: list[str] = []
   for root in roots:
     if not root.exists():

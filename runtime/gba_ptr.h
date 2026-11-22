@@ -14,23 +14,25 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "absl/base/nullability.h"
+
 namespace fe7 {
 
 // Host backing-store pointers for directly addressable GBA memory regions.
 // Populated by hal::Init() (or test fixtures) and cleared by hal::Shutdown().
 struct GbaMemoryMap {
-  uint8_t* ewram = nullptr;  // 0x02000000..0x0203FFFF (256 KiB external WRAM)
-  uint8_t* iwram = nullptr;  // 0x03000000..0x03007FFF (32 KiB internal WRAM)
-  uint8_t* rom = nullptr;    // 0x08000000..0x09FFFFFF (up to 32 MiB Game Pak ROM)
-  size_t rom_size = 0;       // Actual loaded ROM byte length for bounds checking
+  uint8_t* absl_nullable ewram = nullptr;  // 0x02000000..0x0203FFFF (256 KiB external WRAM)
+  uint8_t* absl_nullable iwram = nullptr;  // 0x03000000..0x03007FFF (32 KiB internal WRAM)
+  uint8_t* absl_nullable rom = nullptr;    // 0x08000000..0x09FFFFFF (up to 32 MiB Game Pak ROM)
+  size_t rom_size = 0;                     // Actual loaded ROM byte length for bounds checking
 };
 
 // Global active GBA memory map used by ResolveGbaRaw() and GbaPtr<T>.
-extern GbaMemoryMap g_mem;
+extern GbaMemoryMap gMem;
 
 // Translates a 32-bit GBA bus address into a host pointer for an object of `size` bytes and
 // `align`-byte alignment. Asserts on null, misaligned, out-of-bounds, or non-RAM/ROM regions.
-inline void* ResolveGbaRaw(uint32_t addr, size_t size, size_t align) {
+inline void* absl_nullable ResolveGbaRaw(uint32_t addr, size_t size, size_t align) {
   assert(addr != 0 && "Null GBA pointer dereference");
   // Catch misaligned accesses early so host UB on typed dereferences mirrors GBA alignment rules.
   assert((addr % align) == 0 && "Unaligned GBA pointer dereference");
@@ -39,22 +41,22 @@ inline void* ResolveGbaRaw(uint32_t addr, size_t size, size_t align) {
   const uint32_t offset = addr & 0x00FFFFFFu;
   switch (region) {
     case 0x02:
-      assert(g_mem.ewram != nullptr && "EWRAM backing store not initialized");
+      assert(gMem.ewram != nullptr && "EWRAM backing store not initialized");
       // EWRAM is strictly 256 KiB (0x40000 bytes); reject accesses that straddle the end.
       assert(offset + size <= 0x40000u && "EWRAM out of bounds");
-      return g_mem.ewram + offset;
+      return gMem.ewram + offset;
     case 0x03:
-      assert(g_mem.iwram != nullptr && "IWRAM backing store not initialized");
+      assert(gMem.iwram != nullptr && "IWRAM backing store not initialized");
       // IWRAM is strictly 32 KiB (0x8000 bytes); reject accesses that straddle the end.
       assert(offset + size <= 0x8000u && "IWRAM out of bounds");
-      return g_mem.iwram + offset;
+      return gMem.iwram + offset;
     case 0x08:
     case 0x09:
-      assert(g_mem.rom != nullptr && "ROM backing store not initialized");
+      assert(gMem.rom != nullptr && "ROM backing store not initialized");
       // Wait State 0 spans 0x08000000..0x09FFFFFF (32 MiB), so subtract the base instead of using
       // the 24-bit offset so addresses in 0x09xxxxxx compute the right offset past 16 MiB.
-      assert((addr - 0x08000000u) + size <= g_mem.rom_size && "ROM out of bounds");
-      return g_mem.rom + (addr - 0x08000000u);
+      assert((addr - 0x08000000u) + size <= gMem.rom_size && "ROM out of bounds");
+      return gMem.rom + (addr - 0x08000000u);
     default:
       // Hardware registers and graphics RAM have side effects or bus-width rules; force HAL usage.
       assert(false && "Use hal::Mmio* or hal::Vram* for IO/VRAM/OAM/PAL regions");
@@ -80,8 +82,8 @@ struct GbaPtr {
   constexpr bool operator!=(const GbaPtr& other) const = default;
 
   // Resolves this GBA address to a typed host pointer (asserts on invalid/out-of-bounds address).
-  T* get() const { return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T))); }
-  T* operator->() const { return get(); }
+  T* absl_nonnull get() const { return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T))); }
+  T* absl_nonnull operator->() const { return get(); }
   T& operator*() const { return *get(); }
 
   // Indexes element `idx` relative to this pointer, validating alignment and bounds of the target.

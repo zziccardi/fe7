@@ -14,6 +14,10 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+
 namespace fe7 {
 
 // Expected byte size of a clean FE7 US (AE7E) retail ROM (16 MiB).
@@ -34,18 +38,19 @@ struct RomImage {
 std::string ComputeSha1Hex(std::span<const uint8_t> data);
 
 // Validates that `data` matches kExpectedRomSize and kExpectedFe7UsSha1.
-// Writes the computed digest to *sha1_out (if non-null) and a human-readable reason to *error_out
-// (if non-null) on failure. Returns true if valid.
-bool ValidateRetailRomBytes(std::span<const uint8_t> data, std::string* sha1_out,
-                            std::string* error_out);
+// Writes the computed digest to *sha1_out (if non-null) and returns an InvalidArgumentError on
+// size or hash mismatch.
+absl::Status ValidateRetailRomBytes(std::span<const uint8_t> data,
+                                    std::string* absl_nullable sha1_out = nullptr);
 
 // Reads a retail ROM from `path` (regardless of filename) and validates its size and SHA-1 digest.
-// Populates *out on success; writes a diagnostic message to *error_out (if non-null) on failure.
-bool LoadRomFile(const std::string& path, RomImage* out, std::string* error_out);
+// Returns NotFoundError / InternalError on I/O failure or InvalidArgumentError on validation
+// failure.
+absl::StatusOr<RomImage> LoadRomFile(std::string_view path);
 
 // Wraps an arbitrary 1-byte..32-MiB buffer as a synthetic RomImage for unit/mock tests, bypassing
 // the retail size and SHA-1 check while still computing its digest.
-bool LoadSyntheticRom(std::span<const uint8_t> data, RomImage* out, std::string* error_out);
+absl::StatusOr<RomImage> LoadSyntheticRom(std::span<const uint8_t> data);
 
 }  // namespace fe7
 

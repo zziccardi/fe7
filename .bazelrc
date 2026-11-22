@@ -13,6 +13,7 @@ build:asan --copt=-fsanitize=address,undefined
 build:asan --copt=-fno-sanitize=vptr
 build:asan --copt=-fno-omit-frame-pointer
 build:asan --copt=-DFE7_DEBUG_BOUNDS=1
+build:asan --features=-layering_check
 build:asan --linkopt=-fsanitize=address,undefined
 test:asan --test_output=errors
 

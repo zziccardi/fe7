@@ -42,14 +42,17 @@ BAZEL_JVM_FLAGS=(
 
 ## 3. Coding, Documentation & Commit Conventions
 
+- **Package layout**: Headers, implementations, and unit tests are colocated in top-level Bazel packages (`runtime/` and `game/`). Include headers relative to workspace root (`#include "runtime/gba_ptr.h"`, `#include "game/..."`).
+- **Naming**: Constants use `kCamelCase` (`kRomBaseAddr`); globals and file-scope variables use `gCamelCase` (`gMem`, `gNativeTable`, `gActiveUnit`).
+- **Abseil**: `abseil-cpp` is available in `runtime/` (`absl::flat_hash_map`, `absl::Status`/`absl::StatusOr`, `absl::flags`, `absl_nonnull`/`absl_nullable`). In `game/`, only zero-cost header annotations (`absl_nonnull`/`absl_nullable`) are allowed—heap-allocating Abseil containers are forbidden during Phases 1–4.
 - **Header files (`.h`)**: Always include a module-level comment block at the top explaining the module's purpose, invariants, and architectural role.
 - **Public interfaces**: Document public constants, structs/classes, typedefs, and functions (parameters, return values, ownership/lifetime requirements).
 - **Non-trivial implementations**: Include inline comments explaining *why* each non-trivial statement is performed (e.g., hardware bus rules, ARM7TDMI pipeline offsets, memory ownership order, ABI constraints), not merely restating what the code does.
-- **C++20 style**: Google C++ Style Guide (`.clang-format`, 100-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `src/game/` and `include/game/`.
+- **C++20 style**: Google C++ Style Guide (`.clang-format`, 100-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `game/`.
 - **Commits**: Use Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
 
 ## 4. Runtime / libmgba Gotchas
 
-- `VFileFromConstMemory` in libmgba borrows the ROM byte pointer without copying; HAL (`mgba_hal.cc`) must keep an owned copy alive until after `fe7_mgba_core_destroy`.
+- `VFileFromConstMemory` in libmgba borrows the ROM byte pointer without copying; HAL (`runtime/mgba_hal.cc`) must keep an owned copy (`gRomBytes`) alive until after `fe7_mgba_core_destroy`.
 - `mCoreInitConfig(core, NULL)` allocates config hash tables that `core->deinit(core)` does not free; always call `mCoreConfigDeinit(&core->config)` before `core->deinit(core)` (including error paths) to keep LSan clean.
 - Because `fe7` targets compile with `-fno-rtti` while GoogleTest compiles with RTTI, `.bazelrc` keeps `--copt=-fno-sanitize=vptr` under `--config=asan` to prevent false-positive UBSan vptr errors.

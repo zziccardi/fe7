@@ -12,5 +12,5 @@ Checks: >
   readability-const-return-type,
   readability-redundant-control-flow
 WarningsAsErrors: ''
-HeaderFilterRegex: '^(include|src)/'
+HeaderFilterRegex: '^(runtime|game)/'
 FormatStyle: file
