@@ -189,6 +189,8 @@ cc_binary(
         ":rom_loader",
         ":trace_recorder",
         "//game:register_all",
+        "//game/engine:clock",
+        "//game/engine:proc",
         "//game/engine:rng",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",

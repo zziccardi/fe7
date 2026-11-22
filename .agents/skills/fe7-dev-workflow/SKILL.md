@@ -65,3 +65,27 @@ python3 -m unittest discover -s tools -p '*_test.py' -v
 - Because `fe7` targets compile with `-fno-rtti` while GoogleTest compiles with RTTI, `.bazelrc` keeps `--copt=-fno-sanitize=vptr` under `--config=asan` to prevent false-positive UBSan vptr errors.
 - Under Bazel 9 + Clang + `--config=asan`, `absl/debugging:leak_check` includes `<sanitizer/lsan_interface.h>`, which fails `layering_check` unless `.bazelrc` sets `build:asan --features=-layering_check`.
 - Keep `//runtime:gba_hal` as a header-only `cc_library` separate from `//runtime:mgba_hal`, and keep `runtime/BUILD.bazel` `default_visibility` restricted to `//runtime:__subpackages__` (exposing only `:gba_ptr`, `:gba_hal`, `:dispatch` to `//game:__subpackages__`) so `game/` targets never transitively depend on `@mgba`.
+- On headless Linux VMs without SDL3 display libraries, pass `--config=headless` (e.g., `test --config=asan --config=headless //...`).
+
+## 5. Decompilation & Differential Verification Workflow
+
+- **Two-tier verification**: Every decompiled subsystem in `game/` needs both (1) synthetic GoogleTest unit tests (`*_test.cc`, zero retail ROM, run in CI under `--config=asan --config=headless`) and (2) live differential verification against the local gitignored `fe7_us.gba` via `//runtime:fe7_diff` and `//runtime:fe7_headless`:
+  ```bash
+  # Record live pre-call traces during pure fallback boot
+  ./bazel-bin/runtime/fe7_headless --rom=fe7_us.gba --frames=120 \
+    --register_native=false --record_traces=/tmp/wave.fe7t \
+    --trace_addrs=0x08000BE0,...
+  # Verify 0 r0 mismatches and 0 EWRAM/IWRAM mismatches
+  ./bazel-bin/runtime/fe7_diff --rom=fe7_us.gba --traces=/tmp/wave.fe7t \
+    --fuzz_iters=256
+  ```
+- **Void Thumb epilogues**: Thumb-1 `void` functions return via `pop {r0}; bx r0`, clobbering `r0` with `lr`. Set `DiffOptions::check_return_value = false` for `void` functions in `fe7_diff`.
+- **IWRAM stack scratch bytes**: ARM7TDMI prologues write local frames into upper IWRAM (`0x03007800..0x03007FFF`), whereas native C++20 uses the host stack. Both `DiffOptions::iwram_compare_bytes` and `fe7_headless --dump_checkpoints` compare `0x03000000..0x030077FF` (`0x7800` bytes) to avoid false stack-scratch mismatches.
+- **Cycle-timing nuance**: Native functions that invoke heavy fallback callbacks (e.g., `ProcRun` calling LZ77 decompression via `GbaCall`) run in 0 GBA cycles inside `fe7_mgba_run_until_sentinel`, which can advance frame-boundary timing during heavy boot loads before converging to identical settled framebuffer/IWRAM state.
+- **ARM7TDMI → C++20 bit-exactness**:
+  - Perform wrapping 32-bit multiplies in `uint32_t` before casting to `int32_t` to match Thumb `muls` without triggering UBSan signed-overflow errors.
+  - Mask signed remainders as `uint32_t` (`static_cast<uint32_t>(mod) & 7u`) to match Thumb `ands` on negative inputs without negative indexing.
+  - When storing function pointers in shared GBA structs (e.g., `Proc::proc_repeat_func`), store the exact GBA Thumb address (`kAddr... | 1u`) so un-decompiled ROM code inspecting the field stays binary-compatible.
+  - `GbaPtr<T>` defers `std::is_trivially_copyable_v<T>` to dereference/arithmetic ops and constrains void ops with C++20 `requires`, allowing self-referential structs (`GbaPtr<Proc>`), forward declarations, and opaque `GbaPtr<const void>`.
+- **Git & PR hygiene**: Always pass `--base main --head <branch>` to `gh pr create`, and never commit `*.gba`, `corpus/`, or `.ghidra/`.
+

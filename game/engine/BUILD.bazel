@@ -1,4 +1,4 @@
-# Core engine subsystems (RNG, Proc, Math, etc.).
+# Core engine subsystems (RNG, Clock, Proc, Math, etc.).
 
 load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
 
@@ -25,5 +25,50 @@ fe7_cc_test(
         ":rng",
         "//runtime:dispatch",
         "//runtime:gba_ptr",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "clock",
+    srcs = ["clock.cc"],
+    hdrs = ["clock.h"],
+    deps = [
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "clock_test",
+    srcs = ["clock_test.cc"],
+    deps = [
+        ":clock",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "proc",
+    srcs = ["proc.cc"],
+    hdrs = ["proc.h"],
+    deps = [
+        "//game:proc_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "proc_test",
+    srcs = ["proc_test.cc"],
+    deps = [
+        ":proc",
+        "//game:proc_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
     ],
 )
