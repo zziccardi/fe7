@@ -17,6 +17,8 @@ fe7_game_cc_library(
         "//game:item_hdr",
         "//game:unit_hdr",
         "//game/item:item",
+        "//game/support:support",
+        "//game/unit:unit",
         "//runtime:dispatch",
         "//runtime:gba_ptr",
         "@abseil-cpp//absl/base:nullability",

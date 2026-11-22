@@ -10,6 +10,7 @@
 #define FE7_GAME_PHASE_PHASE_H_
 
 #include <cstdint>
+#include <type_traits>
 
 #include "game/proc.h"
 #include "runtime/gba_ptr.h"
@@ -37,11 +38,8 @@ inline constexpr uint32_t kProcScrCpPhaseAddr = 0x08B96E80u;
 inline constexpr uint32_t kAddrRefreshUnitSprites = 0x08025724u;
 inline constexpr uint32_t kAddrProcessSupportGains = 0x08026898u;
 inline constexpr uint32_t kAddrUpdateTrapsCallback = 0x0802C24Cu;
-inline constexpr uint32_t kAddrCheckTurnEvents = 0x08078988u;
 inline constexpr uint32_t kAddrRunTurnEvents = 0x080789B8u;
 inline constexpr uint32_t kAddrRunVictoryEvents = 0x080790C4u;
-inline constexpr uint32_t kAddrCheckVictoryEvents = 0x08079104u;
-inline constexpr uint32_t kAddrRecordUnitTurnDeployment = 0x080A00FCu;
 
 // FE7 US ROM addresses for the 22 decompiled turn-flow & phase functions.
 inline constexpr uint32_t kAddrLockGame = 0x08015308u;
@@ -154,7 +152,75 @@ void AddGold(int32_t delta);
 // hidden by bit 16 (`flags & 0x0001000C == 0`). Matches `CountUnitsByFaction`.
 int CountUnitsByFaction(int faction);
 
-// Registers all 22 turn-flow & phase-management functions in the dispatch
+// Event-list search cursor passed to `SearchEventList` (0x1C bytes).
+struct EventListInfo {
+  uint32_t list_ptr;     // 0x00: Current event list entry ROM address
+  uint32_t script_addr;  // 0x04: Matched event script ROM address (0 = none)
+  uint32_t flag;         // 0x08: Matched event flag ID
+  uint32_t unk_0c[4];    // 0x0C..0x1B: Condition-specific scratch fields
+};
+
+static_assert(sizeof(EventListInfo) == 0x1C);
+static_assert(std::is_trivially_copyable_v<EventListInfo>);
+
+// Fixed FE7 US ROM/IWRAM addresses for chapter tables, event dispatch, and
+// chapter/permanent event flag bitsets.
+inline constexpr uint32_t kChapterInfoTableAddr = 0x08C9A200u;
+inline constexpr uint32_t kChapterEventAssetTableAddr = 0x08C9C9C8u;
+inline constexpr uint32_t kEventListHandlerTableAddr = 0x08C9E9A4u;
+inline constexpr uint32_t kVictoryEventTableAddr = 0x08C9EA2Cu;
+inline constexpr uint32_t kFlagBitMaskTableAddr = 0x08C9EAECu;
+inline constexpr uint32_t kPermanentFlagsAddr = 0x03004AD0u;
+inline constexpr uint32_t kChapterFlagsAddr = 0x03004AD8u;
+inline constexpr uint32_t kEventInfoScratchAddr = 0x03007F00u;
+
+// FE7 US ROM addresses for the 9 decompiled chapter-event & flag functions.
+inline constexpr uint32_t kAddrGetChapterInfo = 0x08031574u;
+inline constexpr uint32_t kAddrGetChapterEventInfo = 0x080315BCu;
+inline constexpr uint32_t kAddrSearchEventList = 0x0807812Cu;
+inline constexpr uint32_t kAddrEventListEndHandler = 0x080781B0u;
+inline constexpr uint32_t kAddrCheckTurnEvents = 0x08078988u;
+inline constexpr uint32_t kAddrCheckVictoryEvents = 0x08079104u;
+inline constexpr uint32_t kAddrCheckChapterFlag = 0x08079798u;
+inline constexpr uint32_t kAddrCheckPermanentFlag = 0x08079858u;
+inline constexpr uint32_t kAddrGetFlag = 0x080798F8u;
+
+// Returns a ROM pointer to the 0x98-byte chapter data entry for `chapter_id`.
+// Matches FE7 US `GetChapterInfo` (0x08031574).
+GbaPtr<const uint8_t> GetChapterInfo(int chapter_id);
+
+// Returns a ROM pointer to the chapter's event-list pointer table.
+// Matches FE7 US `func_080315BC`.
+GbaPtr<const uint32_t> GetChapterEventInfo(int chapter_id);
+
+// Walks `info->list_ptr` until a handler returns 1 (match or end-of-list),
+// returning `info` if `info->script_addr != 0`, else null. Matches
+// `func_0807812C`.
+GbaPtr<EventListInfo> SearchEventList(GbaPtr<EventListInfo> info);
+
+// Event-list end-of-table sentinel handler (always returns 1). Matches
+// `func_080781B0`.
+int EventListEndHandler(GbaPtr<EventListInfo> info);
+
+// Returns 1 if the current chapter has a pending turn event, else 0.
+// Matches FE7 US `func_08078988`.
+int CheckTurnEvents();
+
+// Returns 1 if the current chapter (0..11) has a pending victory event, else 0.
+// Matches FE7 US `func_08079104`.
+int CheckVictoryEvents();
+
+// Checks a chapter-scoped event flag (`1..0x63`). Matches `func_08079798`.
+int CheckChapterFlag(int flag);
+
+// Checks a permanent event flag (`>= 0x65`). Matches `func_08079858`.
+int CheckPermanentFlag(int flag);
+
+// Checks chapter (`<= 0x63`) or permanent (`> 0x63`) event flag `flag`.
+// Matches FE7 US `GetFlag` (0x080798F8).
+int GetFlag(int flag);
+
+// Registers all 31 turn-flow, phase, event, and flag functions in the dispatch
 // table.
 void RegisterPhaseFunctions();
 

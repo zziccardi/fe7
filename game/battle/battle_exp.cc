@@ -502,7 +502,7 @@ void UpdateUnitFromBattle(GbaPtr<Unit> unit, GbaPtr<BattleUnit> bu) {
   unit->res = static_cast<int8_t>(unit->res + bu->change_res);
   unit->lck = static_cast<int8_t>(unit->lck + bu->change_lck);
 
-  GbaCall(kAddrUnitCheckStatOverflow, unit.addr);
+  UnitCheckStatOverflow(unit);
 
   const int new_wexp = GetBattleUnitUpdatedWeaponExp(bu);
   if (new_wexp > 0) {
@@ -512,11 +512,10 @@ void UpdateUnitFromBattle(GbaPtr<Unit> unit, GbaPtr<BattleUnit> bu) {
   for (int i = 0; i < kUnitItemCount; ++i) {
     unit->items[i] = bu->unit.items[i];
   }
-  GbaCall(kAddrUnitRemoveInvalidItems, unit.addr);
+  UnitRemoveInvalidItems(unit);
 
   if (bu->exp_gain != 0) {
-    GbaCall(kAddrPidStatsAddExpGained, unit->pinfo->id,
-            static_cast<uint32_t>(static_cast<int32_t>(bu->exp_gain)));
+    PidStatsAddExpGained(unit->pinfo->id, static_cast<int>(bu->exp_gain));
   }
 }
 

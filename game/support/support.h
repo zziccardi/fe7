@@ -170,6 +170,10 @@ bool HasUnitGainedSupportLevel(GbaPtr<const Unit> unit, int num);
 // Matches FE7 US `func_08026C08`.
 bool ArePidsAtMaxSupport(uint8_t pid_a, uint8_t pid_b);
 
+// Computes and returns `unit`'s accumulated support bonuses by value (usable
+// from native C++ without needing a GBA stack buffer).
+SupportBonuses ComputeUnitSupportBonuses(GbaPtr<const Unit> unit);
+
 // Registers all 22 support-system functions in the dispatch table.
 void RegisterSupportFunctions();
 

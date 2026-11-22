@@ -139,7 +139,16 @@ void MapAddInRange(int x, int y, int range, int value);
 // `gWorkingMap`. Matches FE7 US `func_0801B19C`.
 void MapSetInRange(int x, int y, int min_range, int max_range);
 
-// Registers all 17 native map & pathfinding functions in the dispatch table.
+// Play-status EWRAM address (weather at +0x15) and ROM ballista movement table.
+inline constexpr uint32_t kMapPlayStatusAddr = 0x0202BBF8u;
+inline constexpr uint32_t kBallistaMoveTableAddr = 0x08BE3C98u;
+
+// Returns the 65-entry terrain movement cost table for `unit` accounting for
+// ballista state and active chapter weather. Matches `GetUnitMovementCost`
+// (0x080187D4).
+GbaPtr<const int8_t> GetUnitMovementCost(GbaPtr<const Unit> unit);
+
+// Registers all 18 native map & pathfinding functions in the dispatch table.
 void RegisterMapFunctions();
 
 }  // namespace fe7

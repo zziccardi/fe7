@@ -370,7 +370,101 @@ GbaPtr<const PInfo> GetPersonInfo(int pid) {
   return GbaPtr<const PInfo>(addr);
 }
 
+void UnitCheckStatOverflow(GbaPtr<Unit> unit) {
+  const int max_hp_cap =
+      ((static_cast<uint8_t>(unit->id) & 0xC0u) == 0x80u) ? 0x78 : 0x3C;
+  if (unit->max_hp > max_hp_cap) {
+    unit->max_hp = static_cast<int8_t>(max_hp_cap);
+  }
+  const GbaPtr<const JInfo> j = unit->jinfo;
+  if (unit->pow > j->max_pow) unit->pow = j->max_pow;
+  if (unit->skl > j->max_skl) unit->skl = j->max_skl;
+  if (unit->spd > j->max_spd) unit->spd = j->max_spd;
+  if (unit->def > j->max_def) unit->def = j->max_def;
+  if (unit->res > j->max_res) unit->res = j->max_res;
+  if (unit->lck > 0x1E) unit->lck = 0x1E;
+
+  const int max_bonus_con = j->max_con - (j->base_con + unit->pinfo->bonus_con);
+  if (unit->bonus_con > max_bonus_con) {
+    unit->bonus_con = static_cast<int8_t>(max_bonus_con);
+  }
+  const int max_bonus_mov = 0x0F - j->base_mov;
+  if (unit->bonus_mov > max_bonus_mov) {
+    unit->bonus_mov = static_cast<int8_t>(max_bonus_mov);
+  }
+}
+
+void PidStatsAddScore(uint8_t pid, int delta) {
+  if (pid == 0u || pid > 0x45u) {
+    return;
+  }
+  const GbaPtr<const PInfo> pinfo = GetPersonInfo(pid);
+  if (!pinfo || pinfo->affinity == 0u) {
+    return;
+  }
+  GbaPtr<uint32_t> entry(kPidStatsTableAddr + static_cast<uint32_t>(pid) * 16u);
+  const uint32_t word0 = entry[0];
+  const int cur = static_cast<int>((word0 << 8) >> 16);
+  const int next = cur + delta;
+  if (next > 0x4000) {
+    entry[0] = (word0 & 0xFF0000FFu) | 0x00400000u;
+  } else if (next < 0) {
+    entry[0] = word0 & 0xFF0000FFu;
+  } else {
+    entry[0] =
+        (word0 & 0xFF0000FFu) | ((static_cast<uint32_t>(next) & 0xFFFFu) << 8);
+  }
+}
+
+void PidStatsAddExpGained(uint8_t pid, int exp_gain) {
+  if (pid == 0u || pid > 0x45u) {
+    return;
+  }
+  const GbaPtr<const PInfo> pinfo = GetPersonInfo(pid);
+  if (!pinfo || pinfo->affinity == 0u) {
+    return;
+  }
+  GbaPtr<uint32_t> entry(kPidStatsTableAddr + static_cast<uint32_t>(pid) * 16u);
+  const uint32_t word2 = entry[2];
+  const int cur = static_cast<int>((word2 << 8) >> 20);
+  int next = cur + exp_gain;
+  if (next > 4000) {
+    next = 4000;
+  }
+  entry[2] =
+      (word2 & 0xFF000FFFu) | ((static_cast<uint32_t>(next) & 0xFFFu) << 12);
+  PidStatsAddScore(pid, exp_gain);
+}
+
+void RecordUnitTurnDeployment(uint8_t pid) { PidStatsAddScore(pid, -8); }
+
 void RegisterUnitFunctions() {
+  RegisterNative(kAddrUnitCheckStatOverflow,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   UnitCheckStatOverflow(GbaPtr<Unit>(r0));
+                   return 0u;
+                 });
+  RegisterNative(kAddrPidStatsAddExpGained,
+                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   PidStatsAddExpGained(static_cast<uint8_t>(r0),
+                                        static_cast<int32_t>(r1));
+                   return 0u;
+                 });
+  RegisterNative(kAddrRecordUnitTurnDeployment,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   RecordUnitTurnDeployment(static_cast<uint8_t>(r0));
+                   return 0u;
+                 });
+  RegisterNative(kAddrPidStatsAddScore,
+                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   PidStatsAddScore(static_cast<uint8_t>(r0),
+                                    static_cast<int32_t>(r1));
+                   return 0u;
+                 });
   RegisterNative(kAddrClearUnit, &ThunkClearUnit);
   RegisterNative(kAddrCopyUnit, &ThunkCopyUnit);
   RegisterNative(kAddrGetUnitVision, &ThunkGetUnitVision);

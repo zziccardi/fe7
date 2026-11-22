@@ -103,54 +103,11 @@ struct FriendZonePosEntry {
   int16_t dy;
 };
 
-// --- Shrinking list of un-decompiled leaf GbaCall() stubs ---
-// Remove each stub as its real FE7 function is decompiled in future waves.
-
+// --- Single remaining graphics/VRAM seam ---
+// RefreshUnitSprites (0x08025724) decompresses sprite sheets and queues VRAM
+// DMA transfers, which are out of scope for a headless pure-logic skirmish.
 uint32_t StubNoOpZero(uint32_t, uint32_t, uint32_t, uint32_t,
                       const uint32_t* absl_nullable) {
-  return 0;
-}
-
-uint32_t StubGetUnitMovementCost(uint32_t r0, uint32_t, uint32_t, uint32_t,
-                                 const uint32_t* absl_nullable) {
-  return GbaPtr<const Unit>(r0)->jinfo->mov_table[0].addr;
-}
-
-uint32_t StubComputeBattleUnitSupportBonuses(uint32_t r0, uint32_t, uint32_t,
-                                             uint32_t,
-                                             const uint32_t* absl_nullable) {
-  GbaPtr<BattleUnit> bu(r0);
-  // Scratch buffer in unused EWRAM for SupportBonuses output.
-  constexpr uint32_t kScratchBonusesAddr = 0x02018000u;
-  GbaPtr<SupportBonuses> bonuses(kScratchBonusesAddr);
-  GetUnitSupportBonuses(GbaPtr<const Unit>(bu.addr), bonuses);
-  bu->battle_attack =
-      static_cast<int16_t>(bu->battle_attack + bonuses->bonus_attack);
-  bu->battle_defense =
-      static_cast<int16_t>(bu->battle_defense + bonuses->bonus_defense);
-  bu->battle_hit_rate =
-      static_cast<int16_t>(bu->battle_hit_rate + bonuses->bonus_hit);
-  bu->battle_avoid_rate =
-      static_cast<int16_t>(bu->battle_avoid_rate + bonuses->bonus_avoid);
-  bu->battle_crit_rate =
-      static_cast<int16_t>(bu->battle_crit_rate + bonuses->bonus_crit);
-  bu->battle_dodge_rate =
-      static_cast<int16_t>(bu->battle_dodge_rate + bonuses->bonus_dodge);
-  return 0;
-}
-
-uint32_t StubUnitRemoveInvalidItems(uint32_t r0, uint32_t, uint32_t, uint32_t,
-                                    const uint32_t* absl_nullable) {
-  GbaPtr<Unit> unit(r0);
-  int dst = 0;
-  for (int src = 0; src < kUnitItemCount; ++src) {
-    if (unit->items[src] != 0u) {
-      unit->items[dst++] = unit->items[src];
-    }
-  }
-  while (dst < kUnitItemCount) {
-    unit->items[dst++] = 0u;
-  }
   return 0;
 }
 
@@ -168,7 +125,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
 
     ResetDispatchTable();
     RegisterAllNativeFunctions();
-    RegisterLeafStubs();
+    RegisterNative(kAddrRefreshUnitSprites, StubNoOpZero);
 
     InitRomTables();
     InitMaps();
@@ -185,22 +142,6 @@ class SkirmishIntegrationTest : public ::testing::Test {
   template <typename T>
   void WriteRom(uint32_t gba_addr, const T& value) {
     std::memcpy(rom_.data() + (gba_addr - kRomBase), &value, sizeof(T));
-  }
-
-  // Registers the minimal set of leaf GbaCall() stubs not yet decompiled.
-  void RegisterLeafStubs() {
-    RegisterNative(kAddrGetUnitMovementCost, StubGetUnitMovementCost);
-    RegisterNative(kAddrComputeBattleUnitSupportBonuses,
-                   StubComputeBattleUnitSupportBonuses);
-    RegisterNative(kAddrUnitRemoveInvalidItems, StubUnitRemoveInvalidItems);
-    RegisterNative(kAddrHasTacticianAfaBonus, StubNoOpZero);
-    RegisterNative(kAddrUnitCheckStatOverflow, StubNoOpZero);
-    RegisterNative(kAddrPidStatsAddExpGained, StubNoOpZero);
-    RegisterNative(kAddrRefreshUnitSprites, StubNoOpZero);
-    RegisterNative(kAddrCheckTurnEvents, StubNoOpZero);
-    RegisterNative(kAddrCheckVictoryEvents, StubNoOpZero);
-    RegisterNative(kAddrRecordUnitTurnDeployment, StubNoOpZero);
-    RegisterNative(kAddrAiFillDangerMap, StubNoOpZero);
   }
 
   void InitRomTables() {
@@ -384,6 +325,19 @@ class SkirmishIntegrationTest : public ::testing::Test {
     };
     std::memcpy(rom_.data() + (kAiFriendZonePosTableAddr - kRomBase), fz_pos,
                 sizeof(fz_pos));
+
+    // Chapter event list & flag tables so CheckTurnEvents / CheckVictoryEvents
+    // execute 100% natively with empty (end-of-list) chapter event tables.
+    constexpr uint32_t kChapterEventsPtrsAddr = 0x08010300u;
+    constexpr uint32_t kEmptyEventListAddr = 0x08010320u;
+    const uint8_t bit_masks[8] = {1, 2, 4, 8, 16, 32, 64, 128};
+    std::memcpy(rom_.data() + (kFlagBitMaskTableAddr - kRomBase), bit_masks,
+                sizeof(bit_masks));
+    WriteRom(kEventListHandlerTableAddr, kAddrEventListEndHandler | 1u);
+    WriteRom(kEventListHandlerTableAddr + 4u, uint32_t{1u});
+    WriteRom(kChapterEventAssetTableAddr, kChapterEventsPtrsAddr);
+    WriteRom(kChapterEventsPtrsAddr, kEmptyEventListAddr);
+    WriteRom(kVictoryEventTableAddr + 0x0Cu, kEmptyEventListAddr);
   }
 
   void InitPaddedMap(uint32_t buf_addr, uint32_t ptr_addr, uint8_t fill,
@@ -696,10 +650,15 @@ TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
   EXPECT_EQ(kent->flags & kUnitFlagTurnEnded, 0u);
 
   // --- Turn 1, Enemy Phase (Red) ---
-  // 5. Brigand B runs AI movement flood, evaluates position & combat score
-  //    against Kent, records gAiDecision, and attacks Kent.
+  // 5. Brigand B refreshes the AI danger map natively (`AiFillDangerMap`),
+  //    runs movement flood, evaluates position & combat score against Kent,
+  //    records gAiDecision, and attacks Kent.
   *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_b->id);
   *GbaPtr<uint32_t>(kAiActiveUnitAddr) = brigand_b.addr;
+  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Au) = 0u;
+  AiRefreshDangerMap();
+  EXPECT_EQ(*GbaPtr<uint8_t>(kAiStateAddr + 0x7Au), 1u);
+  EXPECT_EQ(BmMainCheckVictory(), 1);
 
   MapFloodUnit(GbaPtr<const Unit>(brigand_b.addr));
   GbaPtr<GbaPtr<uint8_t>> rng_map =

@@ -6,7 +6,9 @@
 #include "game/battle.h"
 #include "game/item.h"
 #include "game/item/item.h"
+#include "game/support/support.h"
 #include "game/unit.h"
+#include "game/unit/unit.h"
 #include "runtime/dispatch.h"
 #include "runtime/gba_ptr.h"
 
@@ -174,6 +176,39 @@ uint32_t ThunkBattleApplyWeaponTriangleEffect(
 
 }  // namespace
 
+bool HasTacticianAfaBonus(GbaPtr<const Unit> unit) {
+  const int count = GetUnitItemCount(unit);
+  for (int i = 0; i < count; ++i) {
+    if (GetItemIid(unit->items[i]) == 0x8A) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void ComputeBattleUnitSupportBonuses(GbaPtr<BattleUnit> attacker,
+                                     GbaPtr<BattleUnit> /*defender*/) {
+  const uint16_t config = *GbaPtr<const uint16_t>(kBattleStatsAddr);
+  if ((config & 0x20u) != 0u &&
+      *GbaPtr<const uint8_t>(kPlayStatusAddr + 0x15u) == 0u) {
+    return;
+  }
+  const SupportBonuses b =
+      ComputeUnitSupportBonuses(GbaPtr<const Unit>(attacker.addr));
+  attacker->battle_attack =
+      static_cast<int16_t>(attacker->battle_attack + b.bonus_attack);
+  attacker->battle_defense =
+      static_cast<int16_t>(attacker->battle_defense + b.bonus_defense);
+  attacker->battle_hit_rate =
+      static_cast<int16_t>(attacker->battle_hit_rate + b.bonus_hit);
+  attacker->battle_avoid_rate =
+      static_cast<int16_t>(attacker->battle_avoid_rate + b.bonus_avoid);
+  attacker->battle_crit_rate =
+      static_cast<int16_t>(attacker->battle_crit_rate + b.bonus_crit);
+  attacker->battle_dodge_rate =
+      static_cast<int16_t>(attacker->battle_dodge_rate + b.bonus_dodge);
+}
+
 void ComputeBattleUnitStats(GbaPtr<BattleUnit> attacker,
                             GbaPtr<BattleUnit> defender) {
   const GbaPtr<const BattleUnit> def_c(defender.addr);
@@ -184,7 +219,7 @@ void ComputeBattleUnitStats(GbaPtr<BattleUnit> attacker,
   ComputeBattleUnitAvoidRate(attacker);
   ComputeBattleUnitCritRate(attacker);
   ComputeBattleUnitDodgeRate(attacker);
-  GbaCall(kAddrComputeBattleUnitSupportBonuses, attacker.addr, defender.addr);
+  ComputeBattleUnitSupportBonuses(attacker, defender);
   ComputeBattleUnitWeaponRankBonuses(attacker);
   ComputeBattleUnitStatusBonuses(attacker);
 }
@@ -252,7 +287,7 @@ void ComputeBattleUnitHitRate(GbaPtr<BattleUnit> bu) {
       bu->battle_hit_rate =
           static_cast<int16_t>(base_hit + ComputeTacticianStarBonus());
     }
-    if (static_cast<int8_t>(GbaCall(kAddrHasTacticianAfaBonus, bu.addr)) != 0) {
+    if (HasTacticianAfaBonus(GbaPtr<const Unit>(bu.addr))) {
       bu->battle_hit_rate = static_cast<int16_t>(bu->battle_hit_rate + 10);
     }
   }
@@ -271,7 +306,7 @@ void ComputeBattleUnitAvoidRate(GbaPtr<BattleUnit> bu) {
       bu->battle_avoid_rate =
           static_cast<int16_t>(base_avo + ComputeTacticianStarBonus());
     }
-    if (static_cast<int8_t>(GbaCall(kAddrHasTacticianAfaBonus, bu.addr)) != 0) {
+    if (HasTacticianAfaBonus(GbaPtr<const Unit>(bu.addr))) {
       bu->battle_avoid_rate = static_cast<int16_t>(bu->battle_avoid_rate + 10);
     }
   }
@@ -483,6 +518,19 @@ void RegisterBattleFunctions() {
   RegisterNative(kAddrComputeBattleUnitSpecialWeaponStats,
                  &ThunkComputeBattleUnitSpecialWeaponStats);
   RegisterNative(kAddrBattleApplyReaverEffect, &ThunkBattleApplyReaverEffect);
+  RegisterNative(kAddrHasTacticianAfaBonus,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return HasTacticianAfaBonus(GbaPtr<const Unit>(r0)) ? 1u
+                                                                       : 0u;
+                 });
+  RegisterNative(kAddrComputeBattleUnitSupportBonuses,
+                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   ComputeBattleUnitSupportBonuses(GbaPtr<BattleUnit>(r0),
+                                                   GbaPtr<BattleUnit>(r1));
+                   return 0u;
+                 });
   RegisterNative(kAddrBattleApplyWeaponTriangleEffect,
                  &ThunkBattleApplyWeaponTriangleEffect);
 }

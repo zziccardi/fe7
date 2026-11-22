@@ -284,7 +284,7 @@ Activated once you stage your SHA-1-validated FE7 US ROM locally:
 ### Component 5: Subsystem-by-Subsystem AI Decompilation (Phases 3–4 — In Progress)
 
 #### [IMPLEMENTED] `game/*.h` (Human-Gated Canonical Headers) & `game/register_all.{h,cc}`
-Google-style POD structs layout-locked to FE7 US RAM (`game/proc.h`, `game/unit.h`, verified by `game/headers_test.cc`), using `StanHash/fe7_us` canonical field names:
+Google-style POD structs layout-locked to FE7 US RAM (`game/proc.h`, `game/unit.h`, `game/item.h`, `game/battle.h`, verified by `game/headers_test.cc`), using `StanHash/fe7_us` canonical field names:
 
 ```cpp
 // game/unit.h (excerpt)
@@ -354,14 +354,14 @@ static_assert(std::is_trivially_copyable_v<Unit>);
 #endif  // FE7_GAME_UNIT_H_
 ```
 
-#### `game/` (Decompilation Waves)
+#### `game/` (Decompilation Waves — 270 / 6,568 ROM functions verified)
 
 | Wave | Directory | Scope | Status & Strategy |
 | :--- | :--- | :--- | :--- |
-| **Wave 1** | `game/engine/` | `rng` (10 fns), `clock` (4 fns), `proc` (23 fns + 26-opcode interpreter), plus `hardware`, `dma`, `oam`, `bg`, `irq`, `main` (~10%) | **In Progress** (`rng`, `clock`, `proc` complete & differentially verified). Unlocks native `Proc` loop early. |
-| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & logic (`unit`, `item`, `map`, `battle`, `save`, ~25%) | **In Progress** (`game/unit/` 25 lookup/lifecycle/stat getters complete & verified; next: `game/item/` & `game/map/`). High FE8U/FE6J overlap. |
-| **Wave 3** | `game/audio/` | `m4a` C driver + clean C++ `SoundMainRAM` mixer + `libc`/BIOS wrappers (~10%) | Planned after core gameplay (libmgba's APU runs `m4a` cleanly in fallback during Waves 1–2). |
-| **Wave 4** | `game/ai/` | `cp_*` enemy AI, phase flow, fog, weather, magic seal, tactician/ranks, supports (~15%) | Hybrid FE8U port + Ghidra MCP for FE7-exclusive mechanics. |
+| **Wave 1** | `game/engine/` | `rng` (10), `clock` (4), `proc` (23 + 26-opcode interpreter), plus `hardware`, `dma`, `oam`, `bg`, `irq`, `main` (~10%) | **In Progress** (`rng`, `clock`, `proc` complete & verified; remaining: low-level `hardware`/`dma`/`oam`/`bg`/`irq`/`main`). |
+| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & math (`unit` 29, `item` 43, `battle` 20, `map` 18, `save`, ~25%) | **Mostly Complete** (`unit`, `item`, `battle`, `map` complete & verified; remaining: `game/save/` & unit action execution). |
+| **Wave 3** | `game/battle/`, `game/phase/`, `game/support/`, `game/ai/` | Tactical gameplay loops: `battle_sim` (22), `battle_exp` (26), `phase` + events/flags (31), `support` (22), `ai` decision/scoring/danger-map core (28) | **Core Complete** (all 5 tactical-loop modules + pure-native multi-turn E2E skirmish verified; remaining: top-level `CpDecide`/`CpPerform`, unit actions, traps/fog/weather). |
+| **Wave 4** | `game/audio/`, `game/save/` | `m4a` C driver + clean C++ `SoundMainRAM` mixer, `libc`/BIOS wrappers, save/suspend (`~10%`) | Planned next (`libmgba` APU runs `m4a` cleanly in fallback during Waves 1–3). |
 | **Wave 5** | `game/ui/` | `talk`, `face`, `font`, menus, prep screen, shop, arena, world map, event interpreter, Lyn tutorials, Link Arena UI (~20%) | Use `kViewportWidth`/`kViewportHeight` and `hal::TextHookDrawGlyph` seams; stub low-level SIO via `hal::link`. |
 | **Wave 6** | `game/banim/` | `ekrbattle`, `efx`, spell scripts, Quintessence, Fire Dragon, CGs, sound room, credits (~20%) | Highly parallelizable state-machine procs across agent PR batches. |
 
@@ -381,14 +381,14 @@ static_assert(std::is_trivially_copyable_v<Unit>);
 
 ### Automated Tests
 
-1. **Synthetic Unit Test & Lint Suite (runs in CI with zero retail ROM):**
+1. **Synthetic Unit, E2E Skirmish & Lint Suite (runs in CI with zero retail ROM):**
    ```bash
    bazel test --config=asan --config=headless //...
    python3 tools/check_format.py
    python3 tools/check_agent_rules.py
    python3 -m unittest discover -s tools -p '*_test.py' -v
    ```
-   Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, `DiffFunction` harness, canonical `game/` header `static_assert`s, and unit tests for every decompiled subsystem.
+   Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, `DiffFunction` harness, `.fe7in` input script parser, canonical `game/` header `static_assert`s, unit tests for every decompiled subsystem, and `//testing/e2e:skirmish_integration_test` (multi-turn pure-native combat level exercising all 11 subsystems with zero fallback).
 
 2. **Per-PR Live Differential & Fuzz Verification (Phases 2–4, with local retail ROM):**
    ```bash
@@ -397,16 +397,18 @@ static_assert(std::is_trivially_copyable_v<Unit>);
      --traces=/tmp/wave.fe7t \
      --fuzz_iters=256
    ```
-   Asserts 100% exact `r0` return values (for non-void functions) and byte-identical EWRAM + static IWRAM (`0x03000000..0x030077FF`) vs. original Thumb in `libmgba`.
+   Asserts 100% exact `r0` return values (for non-void functions) and byte-identical EWRAM + static IWRAM (`0x03000000..0x030077FF`) vs. original Thumb in `libmgba` (**270/270** functions passing).
 
-3. **Headless Boot & Checkpoint Verification:**
+3. **Headless Lockstep & Fallback Profiling (`tools/e2e_lockstep.py`):**
    ```bash
-   bazel run --config=headless //runtime:fe7_headless -- \
+   python3 tools/e2e_lockstep.py \
      --rom=<path_to_rom> \
-     --frames=120 \
-     --dump_checkpoints
+     --input_script=<optional.fe7in> \
+     --frames=240 \
+     --checkpoint_frames=120,240 \
+     --fallback_top=25
    ```
-   Compares EWRAM, static IWRAM, and framebuffer FNV-1a hashes between `--register_native=false` (pure fallback) and `--register_native=true` (native C++20 active).
+   Compares EWRAM, static IWRAM, and framebuffer FNV-1a hashes between `--register_native=false` (pure fallback) and `--register_native=true` (native C++20 active) and prints symbol-annotated top-N remaining fallback targets.
 
 4. **Full-Game Lockstep Suite (Phase 4 gate):**
    ```bash

@@ -208,11 +208,25 @@ int AiGetTerrainCombatPositionScoreComponent(int x, int y);
 // `0x08B98A60`. Matches FE7 US `func_08039344`.
 int AiGetFriendZonePositionScoreComponent(int x, int y);
 
+// ROM address for AiMakeMoveRangeMapsForUnitAndWeapon.
+inline constexpr uint32_t kAddrAiMakeMoveRangeMapsForUnitAndWeapon =
+    0x08036650u;
+
+// Floods `unit`'s movement onto `gMapMovement` and marks all tiles reachable
+// with `weapon` onto `gMapRange`. Matches `AiMakeMoveRangeMapsForUnitAndWeapon`
+// (0x08036650).
+void AiMakeMoveRangeMapsForUnitAndWeapon(GbaPtr<const Unit> unit,
+                                         uint16_t weapon);
+
+// Accumulates danger values onto `gMapOther` for every non-allied unit that
+// could reach `gActiveUnit`. Matches `AiFillDangerMap` (0x080393E8).
+void AiFillDangerMap();
+
 // Populates `gMapOther` danger values once per AI turn (`gAiState + 0x7A`).
 // Matches FE7 US `AiRefreshDangerMap` (0x080393BC).
 void AiRefreshDangerMap();
 
-// Registers all 26 Enemy AI functions in the dispatch table.
+// Registers all 28 Enemy AI functions in the dispatch table.
 void RegisterAiFunctions();
 
 }  // namespace fe7
