@@ -206,6 +206,21 @@ void StepFrame(uint16_t key_input) {
 
 const uint32_t* absl_nonnull GetFramebuffer() { return gFramebuffer.data(); }
 
+size_t ReadAudioSamples(int16_t* absl_nonnull out_stereo, size_t max_frames) {
+  assert(gCore != nullptr && "GbaHal not initialized");
+  return fe7_mgba_read_audio_samples(gCore, out_stereo, max_frames);
+}
+
+bool LoadSaveData(const uint8_t* absl_nonnull data, size_t size) {
+  assert(gCore != nullptr && "GbaHal not initialized");
+  return fe7_mgba_load_save(gCore, data, size) != 0;
+}
+
+size_t CopySaveData(uint8_t* absl_nullable out_buf, size_t max_bytes) {
+  assert(gCore != nullptr && "GbaHal not initialized");
+  return fe7_mgba_copy_save(gCore, out_buf, max_bytes);
+}
+
 uint8_t MmioRead8(uint32_t addr) {
   assert(gCpu != nullptr);
   return fe7_mgba_load8(gCpu, addr);

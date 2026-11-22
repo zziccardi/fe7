@@ -129,10 +129,19 @@ cc_binary(
     ],
 )
 
+config_setting(
+    name = "is_headless",
+    values = {"define": "headless=true"},
+)
+
 cc_binary(
     name = "fe7_native",
     srcs = ["sdl_frontend.cc"],
     copts = FE7_RUNTIME_COPTS,
+    local_defines = select({
+        ":is_headless": [],
+        "//conditions:default": ["FE7_HAS_SDL3=1"],
+    }),
     deps = [
         ":gba_hal",
         ":mgba_hal",
@@ -140,5 +149,8 @@ cc_binary(
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
-    ],
+    ] + select({
+        ":is_headless": [],
+        "//conditions:default": ["@sdl3//:sdl3"],
+    }),
 )
