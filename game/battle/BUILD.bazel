@@ -35,3 +35,35 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "battle_sim",
+    srcs = ["battle_sim.cc"],
+    hdrs = ["battle_sim.h"],
+    deps = [
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "battle_sim_test",
+    srcs = ["battle_sim_test.cc"],
+    deps = [
+        ":battle_sim",
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//runtime:gba_ptr",
+    ],
+)

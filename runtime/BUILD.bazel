@@ -192,6 +192,7 @@ cc_binary(
         "//game:register_all",
         "//game:unit_hdr",
         "//game/battle:battle",
+        "//game/battle:battle_sim",
         "//game/engine:clock",
         "//game/engine:proc",
         "//game/engine:rng",

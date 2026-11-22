@@ -87,5 +87,14 @@ python3 -m unittest discover -s tools -p '*_test.py' -v
   - Mask signed remainders as `uint32_t` (`static_cast<uint32_t>(mod) & 7u`) to match Thumb `ands` on negative inputs without negative indexing.
   - When storing function pointers in shared GBA structs (e.g., `Proc::proc_repeat_func`), store the exact GBA Thumb address (`kAddr... | 1u`) so un-decompiled ROM code inspecting the field stays binary-compatible.
   - `GbaPtr<T>` defers `std::is_trivially_copyable_v<T>` to dereference/arithmetic ops and constrains void ops with C++20 `requires`, allowing self-referential structs (`GbaPtr<Proc>`), forward declarations, and opaque `GbaPtr<const void>`.
-- **Git & PR hygiene**: Always pass `--base main --head <branch>` to `gh pr create`, and never commit `*.gba`, `corpus/`, or `.ghidra/`.
+  - `GbaPtr<T>` exposes `.get()` (host pointer) and public field `.addr` (`uint32_t` GBA address) — not `.raw()` or `.Host()`.
+  - `NativeFn` dispatch thunks always take 5 arguments: `(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, const uint32_t* absl_nullable stack_args)` (include `"absl/base/nullability.h"` and add `"@abseil-cpp//absl/base:nullability"` to `deps`).
+- **Synthetic unit tests & `fe7_diff` traces**:
+  - `tools/check_agent_rules.py` forbids `std::vector` in all of `game/` (including `*_test.cc`). For unit tests needing synthetic ROM tables (`kIInfoTableAddr = 0x08BE222C`, `PInfo`, `JInfo`), use a file-scope `alignas(16) std::array<uint8_t, 0x01000000u> gSyntheticRom{}`.
+  - In `runtime/diff_runner.cc`, bound synthetic FE7 US item IDs to `% 0x9Fu` (`0x00..0x9E`; `0x9F` reads past `gItemData` and triggers `GbaPtr` region asserts).
+  - For map/pathfinding and Triangle Attack traces, initialize padded 2D maps (`height + 4` rows, `width + 2` stride) with impassable `0` padding borders, and populate `fe7::GetUnit(uid).addr` in EWRAM for any nonzero `uid` placed on `gMapUnit`.
+  - Because `fe7_diff` steps 5 boot frames before running `DiffFunction()`, `InitArmFuncs` has already populated IWRAM ARM code, enabling direct differential verification of IWRAM-copied ARM routines like `MapFloodCoreRam` (`0x08004408`).
+  - Verify exact side-effects against `corpus/fe7_us/asm/code.s` rather than assuming FE8 parity (e.g., `PInfo::bonus_con` vs `JInfo::base_con`, `InitBattleUnit` zeroing fields on both `gBattleActor` and `gBattleTarget`, `BattleGenerateRoundHits` capturing `attrs` before `BattleCheckBrave`).
+- **Git & PR hygiene**: Pass `--base main --head <branch>` (or `--base <parent-branch> --head <branch>` when stacking on an open PR) to `gh pr create`, and never commit `*.gba`, `corpus/`, or `.ghidra/`.
+
 
