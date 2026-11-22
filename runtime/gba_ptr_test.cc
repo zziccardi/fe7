@@ -86,6 +86,25 @@ TEST_F(GbaPtrTest, ProcAsCastsAddressPreservingType) {
   EXPECT_EQ(sub->timer, 99);
 }
 
+TEST_F(GbaPtrTest, SelfReferentialAndOpaqueVoidPointers) {
+  struct Node {
+    GbaPtr<Node> next;
+    GbaPtr<const void> payload;
+    uint32_t value;
+  };
+  static_assert(sizeof(Node) == 12);
+
+  GbaPtr<Node> head(0x02002000u);
+  GbaPtr<Node> tail(0x02002010u);
+  head->next = tail;
+  head->payload = GbaPtr<const void>(0x08000100u);
+  head->value = 1;
+  tail->value = 2;
+
+  EXPECT_EQ(head->next->value, 2u);
+  EXPECT_EQ(head->payload.addr, 0x08000100u);
+}
+
 #ifndef NDEBUG
 TEST_F(GbaPtrTest, DeathOnNullUnalignedOutOfBoundsAndMmio) {
   GbaPtr<uint32_t> null_ptr;

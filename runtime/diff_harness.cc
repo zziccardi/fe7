@@ -25,6 +25,7 @@ bool RunSingleDiffCase(uint32_t aligned_addr, NativeFn absl_nonnull native_fn,
                        const std::array<uint32_t, 4>& stack_args,
                        const std::vector<uint8_t>& pre_ewram,
                        const std::vector<uint8_t>& pre_iwram,
+                       const DiffOptions& options,
                        std::string* absl_nonnull failure_out) {
   std::memcpy(gMem.ewram, pre_ewram.data(), kEwramSize);
   std::memcpy(gMem.iwram, pre_iwram.data(), kIwramSize);
@@ -48,7 +49,7 @@ bool RunSingleDiffCase(uint32_t aligned_addr, NativeFn absl_nonnull native_fn,
   const uint32_t native_r0 =
       native_fn(regs[0], regs[1], regs[2], regs[3], stack_args.data());
 
-  if (native_r0 != thumb_r0) {
+  if (options.check_return_value && native_r0 != thumb_r0) {
     *failure_out = absl::StrFormat(
         "r0 mismatch at 0x%08X (r0=0x%08X r1=0x%08X r2=0x%08X r3=0x%08X): "
         "thumb=0x%08X native=0x%08X",
@@ -66,7 +67,10 @@ bool RunSingleDiffCase(uint32_t aligned_addr, NativeFn absl_nonnull native_fn,
     }
   }
 
-  for (size_t i = 0; i < kIwramSize; ++i) {
+  const size_t iwram_limit = options.iwram_compare_bytes < kIwramSize
+                                 ? options.iwram_compare_bytes
+                                 : kIwramSize;
+  for (size_t i = 0; i < iwram_limit; ++i) {
     if (gMem.iwram[i] != thumb_iwram[i]) {
       *failure_out = absl::StrFormat(
           "IWRAM mismatch at 0x%08X (addr=0x%08X): thumb=0x%02X native=0x%02X",
@@ -91,7 +95,7 @@ uint32_t XorShift32(uint32_t& state) {
 
 DiffResult DiffFunction(uint32_t gba_addr, NativeFn absl_nonnull native_fn,
                         std::span<const TraceRecord> traces, size_t fuzz_iters,
-                        uint32_t seed) {
+                        uint32_t seed, DiffOptions options) {
   assert(gMem.ewram != nullptr && gMem.iwram != nullptr &&
          "GbaHal must be initialized before DiffFunction");
   const uint32_t aligned = gba_addr & ~1u;
@@ -110,7 +114,8 @@ DiffResult DiffFunction(uint32_t gba_addr, NativeFn absl_nonnull native_fn,
       continue;
     }
     if (!RunSingleDiffCase(aligned, native_fn, rec.regs, rec.stack_args,
-                           rec.ewram, rec.iwram, &result.failure_detail)) {
+                           rec.ewram, rec.iwram, options,
+                           &result.failure_detail)) {
       result.ok = false;
       std::memcpy(gMem.ewram, baseline_ewram.data(), kEwramSize);
       std::memcpy(gMem.iwram, baseline_iwram.data(), kIwramSize);
@@ -129,7 +134,7 @@ DiffResult DiffFunction(uint32_t gba_addr, NativeFn absl_nonnull native_fn,
         XorShift32(rng),
     };
     if (!RunSingleDiffCase(aligned, native_fn, regs, kZeroStack, baseline_ewram,
-                           baseline_iwram, &result.failure_detail)) {
+                           baseline_iwram, options, &result.failure_detail)) {
       result.ok = false;
       std::memcpy(gMem.ewram, baseline_ewram.data(), kEwramSize);
       std::memcpy(gMem.iwram, baseline_iwram.data(), kIwramSize);

@@ -87,10 +87,6 @@ inline void* absl_nullable ResolveGbaRaw(uint32_t addr, size_t size,
 // inside decompiled GBA structs.
 template <typename T>
 struct GbaPtr {
-  // Backing memory is shared raw bytes with the fallback CPU, so non-trivial
-  // C++ types are unsafe.
-  static_assert(std::is_trivially_copyable_v<T>,
-                "GbaPtr<T> requires trivially copyable POD");
   uint32_t addr = 0;
 
   constexpr GbaPtr() = default;
@@ -104,17 +100,33 @@ struct GbaPtr {
 
   // Resolves this GBA address to a typed host pointer (asserts on
   // invalid/out-of-bounds address).
-  T* absl_nonnull get() const {
+  T* absl_nonnull get() const
+    requires(!std::is_void_v<T>)
+  {
+    // Checked here rather than at class instantiation so self-referential
+    // structs (e.g. GbaPtr<Proc> inside Proc) and forward declarations compile.
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "GbaPtr<T> requires trivially copyable POD");
     return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T)));
   }
 
-  T* absl_nonnull operator->() const { return get(); }
+  T* absl_nonnull operator->() const
+    requires(!std::is_void_v<T>)
+  {
+    return get();
+  }
 
-  T& operator*() const { return *get(); }
+  std::add_lvalue_reference_t<T> operator*() const
+    requires(!std::is_void_v<T>)
+  {
+    return *get();
+  }
 
   // Indexes element `idx` relative to this pointer, validating alignment and
   // bounds of the target.
-  T& operator[](ptrdiff_t idx) const {
+  std::add_lvalue_reference_t<T> operator[](ptrdiff_t idx) const
+    requires(!std::is_void_v<T>)
+  {
     // Perform arithmetic in 64-bit signed space so negative indices adjust the
     // 32-bit address cleanly without signed/unsigned wraparound surprises.
     const uint32_t elem_addr = static_cast<uint32_t>(
@@ -123,7 +135,11 @@ struct GbaPtr {
   }
 
   // Advances this pointer by `n` elements of type T in GBA address space.
-  GbaPtr<T> operator+(ptrdiff_t n) const {
+  GbaPtr<T> operator+(ptrdiff_t n) const
+    requires(!std::is_void_v<T>)
+  {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "GbaPtr<T> requires trivially copyable POD");
     return GbaPtr<T>(static_cast<uint32_t>(
         static_cast<int64_t>(addr) + n * static_cast<ptrdiff_t>(sizeof(T))));
   }

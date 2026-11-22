@@ -10,6 +10,7 @@
 #include "absl/flags/usage.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "game/register_all.h"
 #include "runtime/dispatch.h"
 #include "runtime/gba_hal.h"
 #include "runtime/gba_ptr.h"
@@ -18,6 +19,8 @@
 
 ABSL_FLAG(std::string, rom, "", "Path to a retail FE7 US (AE7E) GBA ROM.");
 ABSL_FLAG(int, frames, 60, "Number of video frames to step headlessly.");
+ABSL_FLAG(bool, register_native, true,
+          "Register decompiled native C++20 functions before stepping.");
 ABSL_FLAG(bool, report_fallbacks, false,
           "Print fallback ROM addresses and hit counts.");
 ABSL_FLAG(bool, assert_zero_fallbacks, false,
@@ -87,6 +90,10 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  if (absl::GetFlag(FLAGS_register_native)) {
+    fe7::RegisterAllNativeFunctions();
+  }
+
   const std::string trace_out = absl::GetFlag(FLAGS_record_traces);
   const auto trace_addrs =
       ParseHexAddressList(absl::GetFlag(FLAGS_trace_addrs));
@@ -113,8 +120,11 @@ int main(int argc, char** argv) {
   }
 
   if (absl::GetFlag(FLAGS_dump_checkpoints)) {
+    // Exclude 0x03007800..0x03007FFF (ARM7TDMI stack scratch space) so native
+    // C++20 functions running on the host stack match fallback hashes cleanly.
+    constexpr size_t kStaticIwramSize = 0x7800u;
     const uint64_t ewram_hash = Fnv1a64(fe7::gMem.ewram, fe7::kEwramSize);
-    const uint64_t iwram_hash = Fnv1a64(fe7::gMem.iwram, fe7::kIwramSize);
+    const uint64_t iwram_hash = Fnv1a64(fe7::gMem.iwram, kStaticIwramSize);
     const uint64_t fb_hash = Fnv1a64(
         fe7::hal::GetFramebuffer(),
         static_cast<size_t>(fe7::kViewportWidth * fe7::kViewportHeight) *

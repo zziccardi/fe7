@@ -168,10 +168,31 @@ cc_binary(
         ":mgba_hal",
         ":rom_loader",
         ":trace_recorder",
+        "//game:register_all",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
         "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_binary(
+    name = "fe7_diff",
+    srcs = ["diff_runner.cc"],
+    copts = FE7_RUNTIME_COPTS,
+    deps = [
+        ":diff_harness",
+        ":dispatch",
+        ":gba_hal",
+        ":gba_ptr",
+        ":mgba_hal",
+        ":rom_loader",
+        ":trace_recorder",
+        "//game:register_all",
+        "//game/engine:rng",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/flags:usage",
     ],
 )
 
@@ -192,6 +213,7 @@ cc_binary(
         ":gba_hal",
         ":mgba_hal",
         ":rom_loader",
+        "//game:register_all",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
