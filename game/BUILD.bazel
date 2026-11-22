@@ -39,5 +39,6 @@ fe7_game_cc_library(
         "//game/engine:clock",
         "//game/engine:proc",
         "//game/engine:rng",
+        "//game/unit:unit",
     ],
 )

@@ -1,0 +1,32 @@
+# Unit lookup, lifecycle, and stat getters (Wave 2).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "unit",
+    srcs = ["unit.cc"],
+    hdrs = ["unit.h"],
+    deps = [
+        "//game:unit_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "unit_test",
+    srcs = ["unit_test.cc"],
+    deps = [
+        ":unit",
+        "//game:unit_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
