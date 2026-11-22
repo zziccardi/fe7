@@ -53,7 +53,9 @@ fe7_game_cc_library(
     srcs = ["register_all.cc"],
     hdrs = ["register_all.h"],
     deps = [
+        "//game/ai:ai",
         "//game/battle:battle",
+        "//game/battle:battle_exp",
         "//game/battle:battle_sim",
         "//game/engine:clock",
         "//game/engine:proc",
@@ -61,6 +63,7 @@ fe7_game_cc_library(
         "//game/item:item",
         "//game/map:map",
         "//game/phase:phase",
+        "//game/support:support",
         "//game/unit:unit",
     ],
 )
