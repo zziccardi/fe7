@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
     fe7::hal::StepFrame(0);
   }
 
+  // Capture fallback metrics before Shutdown() detaches the dispatch table.
   const auto fallbacks = fe7::GetFallbackReport();
   if (report_fallbacks) {
     std::cout << "Fallback addresses hit: " << fallbacks.size() << "\n";
@@ -70,6 +71,8 @@ int main(int argc, char** argv) {
 
   fe7::hal::Shutdown();
 
+  // Exit with distinct code 2 so CI/TAS scripts can differentiate fallback regressions from CLI or
+  // ROM-loading errors (exit code 1).
   if (assert_zero_fallbacks && !fallbacks.empty()) {
     std::cerr << "Error: expected 0 fallback calls, got " << fallbacks.size() << " addresses\n";
     return 2;

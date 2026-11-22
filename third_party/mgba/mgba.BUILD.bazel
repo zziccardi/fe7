@@ -1,8 +1,25 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
+genrule(
+    name = "version_c",
+    srcs = ["src/core/version.c.in"],
+    outs = ["src/core/version.c"],
+    cmd = (
+        "sed " +
+        "-e 's/$${GIT_COMMIT}/unknown/g' " +
+        "-e 's/$${GIT_COMMIT_SHORT}/unknown/g' " +
+        "-e 's/$${GIT_BRANCH}/unknown/g' " +
+        "-e 's/$${GIT_REV}/0/g' " +
+        "-e 's/$${BINARY_NAME}/mgba/g' " +
+        "-e 's/$${PROJECT_NAME}/mGBA/g' " +
+        "-e 's/$${VERSION_STRING}/0.10.4/g' " +
+        "$< > $@"
+    ),
+)
+
 cc_library(
     name = "mgba_gba",
-    srcs = glob([
+    srcs = [":version_c"] + glob([
         "src/arm/*.c",
         "src/core/*.c",
         "src/gba/*.c",
@@ -46,6 +63,7 @@ cc_library(
             "HAVE_STRTOF_L",
         ],
         "@platforms//os:linux": [
+            "_GNU_SOURCE",
             "HAVE_STRDUP",
             "HAVE_STRNDUP",
             "HAVE_LOCALTIME_R",

@@ -10,6 +10,7 @@ build:asan --compilation_mode=dbg
 build:asan --copt=-O1
 build:asan --copt=-g
 build:asan --copt=-fsanitize=address,undefined
+build:asan --copt=-fno-sanitize=vptr
 build:asan --copt=-fno-omit-frame-pointer
 build:asan --copt=-DFE7_DEBUG_BOUNDS=1
 build:asan --linkopt=-fsanitize=address,undefined

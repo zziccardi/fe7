@@ -8,17 +8,24 @@
 namespace fe7 {
 namespace {
 
-constexpr size_t kRomHalfwordSlots = kRomRegionSize / 2u;  // 8,388,608 slots
+// Thumb instructions are 2-byte aligned, so halfword indexing halves the direct-mapped table size
+// while still giving every valid ARM/Thumb entry point a unique slot (8,388,608 slots = 64 MiB VA).
+constexpr size_t kRomHalfwordSlots = kRomRegionSize / 2u;
 
-// Zero-initialized in BSS so untouched pages consume no physical memory.
+// Zero-initialized in BSS so untouched virtual pages consume no physical RAM until registered.
 std::array<NativeFn, kRomHalfwordSlots> g_native_table{};
 FallbackExecutor g_fallback_executor = nullptr;
 bool g_track_fallbacks = true;
+
+// Heap-allocated immortal singleton avoids static destruction order fiascos if any teardown hook
+// queries or clears fallback counters during process exit.
 std::unordered_map<uint32_t, uint64_t>& FallbackCounts() {
   static auto* counts = new std::unordered_map<uint32_t, uint64_t>();
   return *counts;
 }
 
+// Clear bit 0 (the ARM/Thumb interworking bit) so callers passing `addr | 1` and `addr` map to the
+// same table slot and fallback counter entry.
 inline uint32_t NormalizeRomAddr(uint32_t gba_addr) { return gba_addr & ~1u; }
 
 inline bool IsInRomRange(uint32_t aligned_addr) {
@@ -30,11 +37,13 @@ inline bool IsInRomRange(uint32_t aligned_addr) {
 void RegisterNative(uint32_t gba_addr, NativeFn fn) {
   const uint32_t aligned = NormalizeRomAddr(gba_addr);
   assert(IsInRomRange(aligned) && "RegisterNative address must be in 0x08000000..0x08FFFFFF");
+  // Shift right by 1 to convert the 2-byte-aligned ROM offset into a halfword slot index.
   g_native_table[(aligned - kRomBaseAddr) >> 1u] = fn;
 }
 
 NativeFn LookupNative(uint32_t gba_addr) {
   const uint32_t aligned = NormalizeRomAddr(gba_addr);
+  // Out-of-ROM addresses (e.g., IWRAM thunks or BIOS calls) are never in the ROM dispatch table.
   if (!IsInRomRange(aligned)) {
     return nullptr;
   }
@@ -47,9 +56,12 @@ void SetTrackFallbacks(bool enabled) { g_track_fallbacks = enabled; }
 
 uint32_t GbaCall(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
                  const uint32_t* stack_args, size_t stack_arg_count) {
+  // Fast path: stay entirely in native C++20 when this ROM address has been decompiled.
   if (NativeFn fn = LookupNative(gba_addr); fn != nullptr) {
     return fn(r0, r1, r2, r3, stack_args);
   }
+  // Normalize before counting and invoking fallback so Thumb `addr | 1` and `addr` aggregate
+  // under a single canonical ROM address.
   const uint32_t aligned = NormalizeRomAddr(gba_addr);
   if (g_track_fallbacks) {
     ++FallbackCounts()[aligned];
@@ -62,6 +74,7 @@ bool TryDispatchFromCpu(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2
                         const uint32_t* stack_args, uint32_t* out_r0) {
   NativeFn fn = LookupNative(gba_addr);
   if (fn == nullptr) {
+    // Signal the fallback CPU to continue executing the original machine code at gba_addr.
     return false;
   }
   const uint32_t res = fn(r0, r1, r2, r3, stack_args);
@@ -74,6 +87,8 @@ bool TryDispatchFromCpu(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2
 std::vector<std::pair<uint32_t, uint64_t>> GetFallbackReport() {
   const auto& counts = FallbackCounts();
   std::vector<std::pair<uint32_t, uint64_t>> report(counts.begin(), counts.end());
+  // Sort hottest un-decompiled functions first; break ties by address for deterministic test output
+  // and diffable reports across runs.
   std::sort(report.begin(), report.end(), [](const auto& a, const auto& b) {
     if (a.second != b.second) {
       return a.second > b.second;
