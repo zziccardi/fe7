@@ -200,6 +200,7 @@ cc_binary(
         "//game/item:item",
         "//game/map:map",
         "//game/phase:phase",
+        "//game/support:support",
         "//game/unit:unit",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",

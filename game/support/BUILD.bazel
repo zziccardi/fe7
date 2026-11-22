@@ -1,0 +1,32 @@
+# Character support relationships, EXP growth, and affinity bonuses (Wave 3).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "support",
+    srcs = ["support.cc"],
+    hdrs = ["support.h"],
+    deps = [
+        "//game:unit_hdr",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "support_test",
+    srcs = ["support_test.cc"],
+    deps = [
+        ":support",
+        "//game:unit_hdr",
+        "//game/unit:unit",
+        "//runtime:gba_ptr",
+    ],
+)

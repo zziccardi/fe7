@@ -9,6 +9,7 @@
 #include "game/item/item.h"
 #include "game/map/map.h"
 #include "game/phase/phase.h"
+#include "game/support/support.h"
 #include "game/unit/unit.h"
 
 namespace fe7 {
@@ -24,6 +25,7 @@ void RegisterAllNativeFunctions() {
   RegisterBattleExpFunctions();
   RegisterMapFunctions();
   RegisterPhaseFunctions();
+  RegisterSupportFunctions();
 }
 
 }  // namespace fe7

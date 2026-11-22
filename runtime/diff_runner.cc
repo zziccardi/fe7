@@ -27,6 +27,7 @@
 #include "game/map/map.h"
 #include "game/phase/phase.h"
 #include "game/register_all.h"
+#include "game/support/support.h"
 #include "game/unit.h"
 #include "game/unit/unit.h"
 #include "runtime/diff_harness.h"
@@ -58,6 +59,7 @@ enum class FuzzMode {
   kBattleExp,
   kMapState,
   kPhaseState,
+  kSupportState,
   kTracesOnly,
 };
 
@@ -392,6 +394,51 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kBattleExp},
     {"BattleApplyStealExpGain", fe7::kAddrBattleApplyStealExpGain, false,
      FuzzMode::kBattleExp},
+    // Wave 3: Supports (0x08026628..0x08026C08)
+    {"GetUnitSupporterCount", fe7::kAddrGetUnitSupporterCount, true,
+     FuzzMode::kSupportState},
+    {"GetUnitSupporterCharacter", fe7::kAddrGetUnitSupporterCharacter, true,
+     FuzzMode::kSupportState},
+    {"GetUnitSupporterUnit", fe7::kAddrGetUnitSupporterUnit, true,
+     FuzzMode::kSupportState},
+    {"GetSupportLevelBySupportIndex", fe7::kAddrGetSupportLevelBySupportIndex,
+     true, FuzzMode::kSupportState},
+    {"GetUnitTotalSupportLevel", fe7::kAddrGetUnitTotalSupportLevel, true,
+     FuzzMode::kSupportState},
+    {"UnitGainSupportExp", fe7::kAddrUnitGainSupportExp, false,
+     FuzzMode::kSupportState},
+    {"UnitGainSupportLevel", fe7::kAddrUnitGainSupportLevel, false,
+     FuzzMode::kSupportState},
+    {"CanUnitSupportNow", fe7::kAddrCanUnitSupportNow, true,
+     FuzzMode::kSupportState},
+    {"GetUnitSupporterInitialExp", fe7::kAddrGetUnitSupporterInitialExp, true,
+     FuzzMode::kSupportState},
+    {"GetUnitSupporterNum", fe7::kAddrGetUnitSupporterNum, true,
+     FuzzMode::kSupportState},
+    {"ClearUnitSupports", fe7::kAddrClearUnitSupports, false,
+     FuzzMode::kSupportState},
+    {"ProcessSupportGains", fe7::kAddrSupportProcessGains, false,
+     FuzzMode::kSupportState},
+    {"GetAffinityBonusEntry", fe7::kAddrGetAffinityBonusEntry, true,
+     FuzzMode::kSupportState},
+    {"ApplyAffinitySupportBonuses", fe7::kAddrApplyAffinitySupportBonuses,
+     false, FuzzMode::kSupportState},
+    {"InitSupportBonuses", fe7::kAddrInitSupportBonuses, false,
+     FuzzMode::kSupportState},
+    {"GetUnitSupportBonuses", fe7::kAddrGetUnitSupportBonuses, true,
+     FuzzMode::kSupportState},
+    {"GetUnitAffinityIcon", fe7::kAddrGetUnitAffinityIcon, true,
+     FuzzMode::kSupportState},
+    {"GetCharacterAffinityIcon", fe7::kAddrGetCharacterAffinityIcon, true,
+     FuzzMode::kSupportState},
+    {"GetSupportLevelUiChar", fe7::kAddrGetSupportLevelUiChar, true,
+     FuzzMode::kSupportState},
+    {"SetSupportLevelGained", fe7::kAddrSetSupportLevelGained, false,
+     FuzzMode::kSupportState},
+    {"HasUnitGainedSupportLevel", fe7::kAddrHasUnitGainedSupportLevel, true,
+     FuzzMode::kSupportState},
+    {"ArePidsAtMaxSupport", fe7::kAddrArePidsAtMaxSupport, true,
+     FuzzMode::kSupportState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -1248,6 +1295,133 @@ std::vector<fe7::TraceRecord> MakeBattleExpTraces(uint32_t gba_addr,
   return out;
 }
 
+// Synthesizes paired FE7 US blue units with real ROM PInfo::support_info
+// entries, varied support EXP/bits/distances, and a scratch SupportBonuses
+// buffer for all 22 Wave 3 Support functions.
+std::vector<fe7::TraceRecord> MakeSupportTraces(uint32_t gba_addr,
+                                                size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x50990A71u ^ gba_addr;
+  static constexpr uint8_t kExpSamples[8] = {0, 40, 78, 80, 158, 160, 240, 241};
+
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    const uint32_t play_off = fe7::kSupportPlayStatusAddr - 0x02000000u;
+    const uint16_t turn = static_cast<uint16_t>(1u + (NextXorshift(rng) % 5u));
+    std::memcpy(rec.ewram.data() + play_off + 0x10u, &turn, sizeof(turn));
+    rec.ewram[play_off + 0x14u] =
+        static_cast<uint8_t>(((NextXorshift(rng) & 7u) == 0u ? 0x80u : 0x00u) |
+                             ((NextXorshift(rng) & 7u) == 0u ? 0x08u : 0x00u));
+    rec.ewram[play_off + 0x1Bu] = static_cast<uint8_t>(NextXorshift(rng) % 4u);
+    const uint32_t bm_off = fe7::kSupportBmStatusAddr - 0x02000000u;
+    rec.ewram[bm_off + 0x04u] = (NextXorshift(rng) & 7u) == 0u ? 0x40u : 0x00u;
+
+    // Pick Eliwood (PID 1) and one of his real ROM support partners.
+    constexpr uint8_t kPidA = 1;
+    auto sup_a = fe7::GetPersonInfo(kPidA)->support_info;
+    const int slot = static_cast<int>(NextXorshift(rng) % sup_a->count);
+    const uint8_t pid_b = sup_a->pids[slot];
+
+    const uint32_t u1_off = fe7::GetUnit(1).addr - 0x02000000u;
+    const uint32_t u2_off = fe7::GetUnit(2).addr - 0x02000000u;
+    fe7::Unit u1{};
+    u1.pinfo = fe7::GetPersonInfo(kPidA);
+    u1.jinfo = fe7::GetJobInfo(1);
+    u1.id = 1;
+    u1.x = 5;
+    u1.y = 5;
+    u1.support_bits = static_cast<uint8_t>(NextXorshift(rng) & 0x7Fu);
+    for (int s = 0; s < fe7::kUnitSupportCount; ++s) {
+      u1.supports[s] = kExpSamples[NextXorshift(rng) & 7u];
+    }
+
+    fe7::Unit u2{};
+    u2.pinfo = fe7::GetPersonInfo(pid_b);
+    u2.jinfo = fe7::GetJobInfo(2);
+    u2.id = 2;
+    const int dist_choice = static_cast<int>(NextXorshift(rng) % 5u);
+    u2.x = static_cast<int8_t>(5 + dist_choice);
+    u2.y = 5;
+    if (dist_choice == 0 && (NextXorshift(rng) & 1u)) {
+      u1.rescue = 2;
+      u2.flags |= 0x20u;
+    }
+    u2.support_bits = static_cast<uint8_t>(NextXorshift(rng) & 0x7Fu);
+    for (int s = 0; s < fe7::kUnitSupportCount; ++s) {
+      u2.supports[s] = kExpSamples[NextXorshift(rng) & 7u];
+    }
+
+    std::memcpy(rec.ewram.data() + u1_off, &u1, sizeof(u1));
+    std::memcpy(rec.ewram.data() + u2_off, &u2, sizeof(u2));
+
+    constexpr uint32_t kBonusOff = 0x18000u;
+    const uint32_t bonus_addr = 0x02000000u + kBonusOff;
+    const uint32_t u1_addr = 0x02000000u + u1_off;
+
+    switch (gba_addr) {
+      case fe7::kAddrGetUnitSupporterCount:
+      case fe7::kAddrGetUnitTotalSupportLevel:
+      case fe7::kAddrClearUnitSupports:
+      case fe7::kAddrGetUnitAffinityIcon:
+        rec.regs[0] = u1_addr;
+        break;
+      case fe7::kAddrGetUnitSupporterCharacter:
+      case fe7::kAddrGetUnitSupporterUnit:
+      case fe7::kAddrGetSupportLevelBySupportIndex:
+      case fe7::kAddrUnitGainSupportExp:
+      case fe7::kAddrUnitGainSupportLevel:
+      case fe7::kAddrCanUnitSupportNow:
+      case fe7::kAddrGetUnitSupporterInitialExp:
+      case fe7::kAddrHasUnitGainedSupportLevel:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = static_cast<uint32_t>(slot);
+        break;
+      case fe7::kAddrGetUnitSupporterNum:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = (NextXorshift(rng) & 1u) ? pid_b : 99u;
+        break;
+      case fe7::kAddrSupportProcessGains:
+        break;
+      case fe7::kAddrGetAffinityBonusEntry:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 8u);
+        break;
+      case fe7::kAddrApplyAffinitySupportBonuses:
+        rec.regs[0] = bonus_addr;
+        rec.regs[1] = 1u + (NextXorshift(rng) % 7u);
+        rec.regs[2] = NextXorshift(rng) % 4u;
+        break;
+      case fe7::kAddrInitSupportBonuses:
+        rec.regs[0] = bonus_addr;
+        break;
+      case fe7::kAddrGetUnitSupportBonuses:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = bonus_addr;
+        break;
+      case fe7::kAddrGetCharacterAffinityIcon:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 40u);
+        break;
+      case fe7::kAddrGetSupportLevelUiChar:
+        rec.regs[0] = NextXorshift(rng) % 4u;
+        break;
+      case fe7::kAddrSetSupportLevelGained:
+      case fe7::kAddrArePidsAtMaxSupport:
+        rec.regs[0] = kPidA;
+        rec.regs[1] = pid_b;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1378,6 +1552,12 @@ int main(int argc, char** argv) {
         auto phase_traces = MakePhaseTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, phase_traces, 0,
                                 0xFE700001u, opts);
+        break;
+      }
+      case FuzzMode::kSupportState: {
+        auto sup_traces = MakeSupportTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, sup_traces, 0, 0xFE700001u,
+                                opts);
         break;
       }
       case FuzzMode::kTracesOnly:

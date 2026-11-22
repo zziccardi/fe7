@@ -62,6 +62,7 @@ fe7_game_cc_library(
         "//game/item:item",
         "//game/map:map",
         "//game/phase:phase",
+        "//game/support:support",
         "//game/unit:unit",
     ],
 )
