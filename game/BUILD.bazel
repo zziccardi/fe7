@@ -63,6 +63,7 @@ fe7_game_cc_library(
         "//game/engine:rng",
         "//game/item:item",
         "//game/map:map",
+        "//game/map:trap",
         "//game/phase:phase",
         "//game/support:support",
         "//game/unit:unit",

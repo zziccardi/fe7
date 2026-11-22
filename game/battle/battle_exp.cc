@@ -10,6 +10,7 @@
 #include "game/engine/rng.h"
 #include "game/item.h"
 #include "game/item/item.h"
+#include "game/map/trap.h"
 #include "game/unit.h"
 #include "game/unit/unit.h"
 #include "runtime/dispatch.h"
@@ -531,8 +532,7 @@ void BattleApplyBallistaUpdates() {
   if ((BattleStatsPtr()->config & kBattleConfigBallista) != 0u) {
     GbaPtr<BattleUnit> actor = BattleActorPtr();
     const uint8_t uses = static_cast<uint8_t>(GetItemUses(actor->weapon));
-    const uint32_t trap_addr = GbaCall(kAddrGetTrap, actor->unit.ballista_trap);
-    *GbaPtr<uint8_t>(trap_addr + 6u) = uses;
+    GetTrap(actor->unit.ballista_trap)->data[2] = uses;
   }
 }
 

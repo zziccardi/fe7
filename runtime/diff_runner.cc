@@ -26,6 +26,7 @@
 #include "game/engine/rng.h"
 #include "game/item/item.h"
 #include "game/map/map.h"
+#include "game/map/trap.h"
 #include "game/phase/phase.h"
 #include "game/register_all.h"
 #include "game/support/support.h"
@@ -62,6 +63,7 @@ enum class FuzzMode {
   kPhaseState,
   kSupportState,
   kAiState,
+  kTrapState,
   kTracesOnly,
 };
 
@@ -524,6 +526,47 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"CheckTurnEvents", fe7::kAddrCheckTurnEvents, true, FuzzMode::kAiState},
     {"CheckVictoryEvents", fe7::kAddrCheckVictoryEvents, true,
      FuzzMode::kAiState},
+    // Tactical Layer 1: Traps, Obstacles, Light Runes & Fog Maps (27 fns).
+    {"RefreshUnitsOnMaps", fe7::kAddrRefreshUnitsOnMaps, false,
+     FuzzMode::kTrapState},
+    {"RefreshTorchlightOnFogMap", fe7::kAddrRefreshTorchlightOnFogMap, false,
+     FuzzMode::kTrapState},
+    {"RefreshMinesOnHiddenMap", fe7::kAddrRefreshMinesOnHiddenMap, false,
+     FuzzMode::kTrapState},
+    {"RefreshEntityMaps", fe7::kAddrRefreshEntityMaps, false,
+     FuzzMode::kTrapState},
+    {"InitTraps", fe7::kAddrInitTraps, false, FuzzMode::kTrapState},
+    {"GetTrap", fe7::kAddrGetTrap, true, FuzzMode::kTrapState},
+    {"GetTrapAt", fe7::kAddrGetTrapAt, true, FuzzMode::kTrapState},
+    {"GetSpecificTrapAt", fe7::kAddrGetSpecificTrapAt, true,
+     FuzzMode::kTrapState},
+    {"AddTrap", fe7::kAddrAddTrap, true, FuzzMode::kTrapState},
+    {"AddDamagingTrap", fe7::kAddrAddDamagingTrap, true, FuzzMode::kTracesOnly},
+    {"RemoveTrap", fe7::kAddrRemoveTrap, false, FuzzMode::kTrapState},
+    {"AddFireTrap", fe7::kAddrAddFireTrap, true, FuzzMode::kTrapState},
+    {"AddGasTrap", fe7::kAddrAddGasTrap, true, FuzzMode::kTracesOnly},
+    {"AddArrowTrap", fe7::kAddrAddArrowTrap, true, FuzzMode::kTrapState},
+    {"AddTrap6", fe7::kAddrAddTrap6, true, FuzzMode::kTrapState},
+    {"AddTrap8", fe7::kAddrAddTrap8, true, FuzzMode::kTrapState},
+    {"AddTrap9", fe7::kAddrAddTrap9, true, FuzzMode::kTrapState},
+    {"InitMapObstacles", fe7::kAddrInitMapObstacles, false,
+     FuzzMode::kTrapState},
+    {"ApplyLightRuneTerrain", fe7::kAddrApplyLightRuneTerrain, false,
+     FuzzMode::kTrapState},
+    {"GetTrapExtraAt", fe7::kAddrGetTrapExtraAt, true, FuzzMode::kTrapState},
+    {"AddMapChangeTrap", fe7::kAddrAddMapChangeTrap, false,
+     FuzzMode::kTrapState},
+    {"RemoveMapChangeTrap", fe7::kAddrRemoveMapChangeTrap, false,
+     FuzzMode::kTrapState},
+    {"UnitHideIfUnderRoof", fe7::kAddrUnitHideIfUnderRoof, false,
+     FuzzMode::kTrapState},
+    {"TickDamagingTraps", fe7::kAddrTickDamagingTraps, false,
+     FuzzMode::kTrapState},
+    {"ResetExpiredDamagingTraps", fe7::kAddrResetExpiredDamagingTraps, false,
+     FuzzMode::kTrapState},
+    {"AddLightRune", fe7::kAddrAddLightRune, true, FuzzMode::kTrapState},
+    {"ApplyLightRuneTerrainAlt", fe7::kAddrApplyLightRuneTerrainAlt, false,
+     FuzzMode::kTrapState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -1757,6 +1800,160 @@ std::vector<fe7::TraceRecord> MakeAiTraces(uint32_t gba_addr, size_t count) {
   return out;
 }
 
+// Synthesizes valid padded maps (terrain, unit, fog, hidden), active units,
+// and gTrapArray entries for all 27 Trap & Fog functions.
+std::vector<fe7::TraceRecord> MakeTrapTraces(uint32_t gba_addr, size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x54524150u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::kEwramSize, 0u);
+    rec.iwram.assign(fe7::kIwramSize, 0u);
+    std::memcpy(rec.iwram.data(), fe7::gMem.iwram, fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kFogMapBufOff = 0x12000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x13000u;
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u);
+    const uint32_t fog_addr = InitSyntheticMapBuffer(
+        rec.ewram, kFogMapBufOff, fe7::kMapFogAddr, kW, kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &fog_addr, sizeof(fog_addr));
+
+    // Populate interior terrain (plains, breakable wall 0x1B, snag 0x33,
+    // roof 0x22).
+    const uint32_t rows = kH + 4u;
+    const uint32_t stride = kW + 2u;
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        const uint32_t toff = static_cast<uint32_t>(y + 2) * stride +
+                              static_cast<uint32_t>(x + 1);
+        const uint32_t r = NextXorshift(rng) % 10u;
+        uint8_t tid = 1u;
+        if (r == 0u) tid = 0x1Bu;
+        if (r == 1u) tid = 0x33u;
+        if (r == 2u) tid = 0x22u;
+        rec.ewram[terrain_tiles + toff] = tid;
+      }
+    }
+
+    // Populate Blue unit 1 and Red unit 0x81 in EWRAM.
+    const uint32_t u1_off = fe7::GetUnit(1).addr - 0x02000000u;
+    const uint32_t e1_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, u1_off, rng);
+    PopulateSyntheticUnit(rec.ewram, e1_off, rng);
+    fe7::Unit u1{};
+    std::memcpy(&u1, rec.ewram.data() + u1_off, sizeof(u1));
+    u1.id = 1;
+    u1.x = static_cast<int8_t>(NextXorshift(rng) % kW);
+    u1.y = static_cast<int8_t>(NextXorshift(rng) % kH);
+    std::memcpy(rec.ewram.data() + u1_off, &u1, sizeof(u1));
+
+    fe7::Unit e1{};
+    std::memcpy(&e1, rec.ewram.data() + e1_off, sizeof(e1));
+    e1.id = static_cast<int8_t>(0x81);
+    e1.x = static_cast<int8_t>(NextXorshift(rng) % kW);
+    e1.y = static_cast<int8_t>(NextXorshift(rng) % kH);
+    std::memcpy(rec.ewram.data() + e1_off, &e1, sizeof(e1));
+
+    // Fog vision (+0x0D), chapter (+0x0E), faction (+0x0F).
+    rec.ewram[(fe7::kMapPlayStatusAddr - 0x02000000u) + 0x0Du] =
+        (NextXorshift(rng) & 1u) ? 3u : 0u;
+    rec.ewram[(fe7::kMapPlayStatusAddr - 0x02000000u) + 0x0Eu] =
+        static_cast<uint8_t>(NextXorshift(rng) % 8u);
+    rec.ewram[(fe7::kMapPlayStatusAddr - 0x02000000u) + 0x0Fu] =
+        (NextXorshift(rng) & 1u) ? fe7::kFactionBlue : fe7::kFactionRed;
+
+    // Seed 5 varied traps in gTrapArray (terminated by slot 5 type == 0).
+    const uint32_t trap_off = fe7::kTrapArrayAddr - 0x02000000u;
+    const fe7::Trap seed_traps[5] = {
+        {2, 3, static_cast<uint8_t>(fe7::TrapType::kFire), 0, {2, 3, 1, 10}},
+        {4, 5, static_cast<uint8_t>(fe7::TrapType::kTorchlight), 2, {}},
+        {5, 1, static_cast<uint8_t>(fe7::TrapType::kMine), 0, {}},
+        {3,
+         2,
+         static_cast<uint8_t>(fe7::TrapType::kLightRune),
+         1,
+         {0, 0, 3, 0}},
+        {0, 0, static_cast<uint8_t>(fe7::TrapType::kMapChange), 4, {}},
+    };
+    std::memcpy(rec.ewram.data() + trap_off, seed_traps, sizeof(seed_traps));
+
+    const uint32_t tx = NextXorshift(rng) % kW;
+    const uint32_t ty = NextXorshift(rng) % kH;
+    switch (gba_addr) {
+      case fe7::kAddrGetTrap:
+        rec.regs[0] = NextXorshift(rng) % 10u;
+        break;
+      case fe7::kAddrGetTrapAt:
+      case fe7::kAddrGetTrapExtraAt:
+      case fe7::kAddrAddTrap8:
+      case fe7::kAddrAddLightRune:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? 2u : tx;
+        rec.regs[1] = (NextXorshift(rng) & 1u) ? 3u : ty;
+        break;
+      case fe7::kAddrGetSpecificTrapAt:
+        rec.regs[0] = 2u;
+        rec.regs[1] = 3u;
+        rec.regs[2] = (NextXorshift(rng) & 1u) ? 4u : 5u;
+        break;
+      case fe7::kAddrAddTrap:
+        rec.regs[0] = tx;
+        rec.regs[1] = ty;
+        rec.regs[2] = 1u + (NextXorshift(rng) % 11u);
+        rec.regs[3] = NextXorshift(rng) % 20u;
+        break;
+      case fe7::kAddrRemoveTrap:
+        rec.regs[0] = fe7::kTrapArrayAddr + (NextXorshift(rng) % 5u) * 8u;
+        break;
+      case fe7::kAddrAddFireTrap:
+      case fe7::kAddrAddTrap6:
+        rec.regs[0] = tx;
+        rec.regs[1] = ty;
+        rec.regs[2] = 1u + (NextXorshift(rng) % 4u);
+        rec.regs[3] = 1u + (NextXorshift(rng) % 4u);
+        break;
+      case fe7::kAddrAddArrowTrap:
+        rec.regs[0] = tx;
+        rec.regs[1] = 1u + (NextXorshift(rng) % 4u);
+        rec.regs[2] = 1u + (NextXorshift(rng) % 4u);
+        break;
+      case fe7::kAddrAddTrap9:
+        rec.regs[0] = tx;
+        rec.regs[1] = ty;
+        rec.regs[2] = NextXorshift(rng) % 10u;
+        break;
+      case fe7::kAddrAddMapChangeTrap:
+      case fe7::kAddrRemoveMapChangeTrap:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? 4u : 7u;
+        break;
+      case fe7::kAddrUnitHideIfUnderRoof:
+        rec.regs[0] = 0x02000000u + u1_off;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1898,6 +2095,12 @@ int main(int argc, char** argv) {
       case FuzzMode::kAiState: {
         auto ai_traces = MakeAiTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, ai_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kTrapState: {
+        auto trap_traces = MakeTrapTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, trap_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }

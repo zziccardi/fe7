@@ -24,9 +24,8 @@ namespace fe7 {
 inline constexpr uint32_t kBattleExpScratchAddr = 0x0203A510u;
 inline constexpr uint32_t kBattleUnitPaletteScratchAddr = 0x03002850u;
 
-// External helper ROM addresses invoked via GbaCall().
+// External helper ROM address invoked via GbaCall().
 inline constexpr uint32_t kAddrUpdateObstacleFromBattle = 0x0802A314u;
-inline constexpr uint32_t kAddrGetTrap = 0x0802C318u;
 
 // FE7 US ROM addresses for the 26 decompiled post-battle EXP/update functions.
 inline constexpr uint32_t kAddrBattleApplyExpGains = 0x0802956Cu;
