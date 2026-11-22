@@ -207,6 +207,7 @@ fe7_game_cc_library(
         ":ai_opcodes",
         ":ai_script",
         "//game:unit_hdr",
+        "//game/battle:battle_gen",
         "//game/item:item",
         "//game/map:map",
         "//game/phase:phase",

@@ -104,3 +104,41 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "battle_gen",
+    srcs = ["battle_gen.cc"],
+    hdrs = ["battle_gen.h"],
+    deps = [
+        ":battle",
+        ":battle_exp",
+        ":battle_sim",
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:ballista",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "battle_gen_test",
+    srcs = ["battle_gen_test.cc"],
+    deps = [
+        ":battle_gen",
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:ballista",
+        "//game/map:trap",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
+

@@ -10,6 +10,7 @@
 #include "game/ai/ai_script.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
+#include "game/battle/battle_gen.h"
 #include "game/battle/battle_sim.h"
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
@@ -33,6 +34,7 @@ void RegisterAllNativeFunctions() {
   RegisterBattleFunctions();
   RegisterBattleSimFunctions();
   RegisterBattleExpFunctions();
+  RegisterBattleGenFunctions();
   RegisterMapFunctions();
   RegisterTrapFunctions();
   RegisterBallistaFunctions();

@@ -506,6 +506,9 @@ void UnitEquipItemSlot(GbaPtr<Unit> unit, int slot) {
 }
 
 bool IsItemEffectiveAgainst(uint16_t item, GbaPtr<const Unit> target) {
+  if (!target->jinfo) {
+    return false;
+  }
   const uint8_t target_jid = target->jinfo->id;
   const GbaPtr<const uint8_t> list = InfoForItem(item)->effectiveness;
   if (!list) {

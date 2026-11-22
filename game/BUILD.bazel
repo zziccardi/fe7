@@ -64,6 +64,7 @@ fe7_game_cc_library(
         "//game/ai:ai_script",
         "//game/battle:battle",
         "//game/battle:battle_exp",
+        "//game/battle:battle_gen",
         "//game/battle:battle_sim",
         "//game/engine:clock",
         "//game/engine:proc",

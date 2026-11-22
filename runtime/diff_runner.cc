@@ -27,6 +27,7 @@
 #include "game/battle.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
+#include "game/battle/battle_gen.h"
 #include "game/battle/battle_sim.h"
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
@@ -80,6 +81,7 @@ enum class FuzzMode {
   kAiCombatState,
   kAiCpState,
   kBallistaState,
+  kBattleGenState,
   kTracesOnly,
 };
 
@@ -989,6 +991,26 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kBallistaState},
     {"GetBallistaItemFromTrap", fe7::kAddrGetBallistaItemFromTrap, true,
      FuzzMode::kBallistaState},
+    // Group 2: Battle simulation & real-combat entrypoints (9).
+    {"BattleGenerateSimulationInternal",
+     fe7::kAddrBattleGenerateSimulationInternal, false, FuzzMode::kTracesOnly},
+    {"BattleGenerateRealInternal", fe7::kAddrBattleGenerateRealInternal, false,
+     FuzzMode::kBattleGenState},
+    {"BattleApplyGameStateUpdates", fe7::kAddrBattleApplyGameStateUpdates,
+     false, FuzzMode::kBattleGenState},
+    {"BattleGenerateSimulation", fe7::kAddrBattleGenerateSimulation, false,
+     FuzzMode::kTracesOnly},
+    {"BattleGenerateReal", fe7::kAddrBattleGenerateReal, false,
+     FuzzMode::kBattleGenState},
+    {"BattleGenerateBallistaSimulation",
+     fe7::kAddrBattleGenerateBallistaSimulation, false,
+     FuzzMode::kBattleGenState},
+    {"BattleGenerateBallistaReal", fe7::kAddrBattleGenerateBallistaReal, false,
+     FuzzMode::kBattleGenState},
+    {"BattleGenerate", fe7::kAddrBattleGenerate, false,
+     FuzzMode::kBattleGenState},
+    {"BattleGenerateDisplayStats", fe7::kAddrBattleGenerateDisplayStats, false,
+     FuzzMode::kBattleGenState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -3938,6 +3960,141 @@ std::vector<fe7::TraceRecord> MakeBallistaTraces(uint32_t gba_addr,
   return out;
 }
 
+std::vector<fe7::TraceRecord> MakeBattleGenTraces(uint32_t gba_addr,
+                                                  size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0xBA771E6Eu ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+    InitSyntheticMapBuffer(rec.ewram, 0x11000u, fe7::kMapUnitAddr, kW, kH,
+                           0x00u);
+    InitSyntheticMapBuffer(rec.ewram, 0x11400u, fe7::kMapTerrainAddr, kW, kH,
+                           0x01u);
+
+    // Seed RNG state so real combat rolls deterministically.
+    const uint32_t rng_off = fe7::kRnSeedsAddr - 0x03000000u;
+    uint16_t rn[3] = {
+        static_cast<uint16_t>(NextXorshift(rng) & 0xFFFFu),
+        static_cast<uint16_t>(NextXorshift(rng) & 0xFFFFu),
+        static_cast<uint16_t>(NextXorshift(rng) & 0xFFFFu),
+    };
+    std::memcpy(rec.iwram.data() + rng_off, rn, sizeof(rn));
+
+    // Populate actor (Blue 1) at (3, 3) and target (Red 0x81) at (4, 3).
+    const uint32_t u1_off = fe7::GetUnit(1).addr - 0x02000000u;
+    const uint32_t e1_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, u1_off, rng);
+    PopulateSyntheticUnit(rec.ewram, e1_off, rng);
+
+    fe7::Unit u1{};
+    std::memcpy(&u1, rec.ewram.data() + u1_off, sizeof(u1));
+    u1.id = 1;
+    u1.x = 3;
+    u1.y = 3;
+    u1.max_hp = 24;
+    u1.hp = 20;
+    u1.items[0] = 0x1401u;  // Iron Sword
+    u1.items[1] = 0x1414u;  // Iron Lance
+    std::memcpy(rec.ewram.data() + u1_off, &u1, sizeof(u1));
+
+    fe7::Unit e1{};
+    std::memcpy(&e1, rec.ewram.data() + e1_off, sizeof(e1));
+    e1.id = static_cast<int8_t>(0x81);
+    e1.x = 4;
+    e1.y = 3;
+    e1.max_hp = 24;
+    e1.hp = 20;
+    e1.items[0] = 0x1401u;
+    std::memcpy(rec.ewram.data() + e1_off, &e1, sizeof(e1));
+
+    // Seed a ballista trap at (3, 3) for ballista simulations/battles.
+    const uint32_t trap_off = fe7::kTrapArrayAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + trap_off, 0, 65u * sizeof(fe7::Trap));
+    fe7::Trap t0{};
+    t0.x = 3u;
+    t0.y = 3u;
+    t0.type = static_cast<uint8_t>(fe7::TrapType::kBallista);
+    t0.extra = 0x35u;
+    t0.data[2] = 5u;
+    std::memcpy(rec.ewram.data() + trap_off, &t0, sizeof(t0));
+
+    // Seed gActionData at 0x0203A958 (x_move=3, y_move=3, item_slot=0).
+    const uint32_t act_off = fe7::kActionDataAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + act_off, 0, 0x20u);
+    rec.ewram[act_off + 0x0Eu] = 3u;
+    rec.ewram[act_off + 0x0Fu] = 3u;
+    rec.ewram[act_off + 0x12u] = 0u;
+
+    // Seed gBattleStats / gBattleActor / gBattleTarget cleanly for
+    // BattleApplyGameStateUpdates.
+    const uint32_t bs_off = fe7::kBattleStatsAddr - 0x02000000u;
+    fe7::BattleStats bs{};
+    bs.config = (NextXorshift(rng) & 1u) ? fe7::kBattleConfigReal
+                                         : fe7::kBattleConfigSimulate;
+    bs.range = 1u;
+    std::memcpy(rec.ewram.data() + bs_off, &bs, sizeof(bs));
+
+    fe7::BattleUnit bu_a{};
+    bu_a.unit = u1;
+    bu_a.weapon = u1.items[0];
+    bu_a.weapon_before = u1.items[0];
+    bu_a.weapon_slot_index = 0;
+    std::memcpy(rec.ewram.data() + (fe7::kBattleActorAddr - 0x02000000u), &bu_a,
+                sizeof(bu_a));
+
+    fe7::BattleUnit bu_t{};
+    bu_t.unit = e1;
+    bu_t.weapon = e1.items[0];
+    bu_t.weapon_before = e1.items[0];
+    bu_t.weapon_slot_index = 0;
+    std::memcpy(rec.ewram.data() + (fe7::kBattleTargetAddr - 0x02000000u),
+                &bu_t, sizeof(bu_t));
+
+    const uint32_t u1_addr = fe7::GetUnit(1).addr;
+    const uint32_t e1_addr = fe7::GetUnit(0x81).addr;
+
+    switch (gba_addr) {
+      case fe7::kAddrBattleGenerateRealInternal:
+      case fe7::kAddrBattleGenerateReal:
+      case fe7::kAddrBattleGenerateBallistaReal:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = e1_addr;
+        break;
+      case fe7::kAddrBattleApplyGameStateUpdates:
+        break;
+      case fe7::kAddrBattleGenerateBallistaSimulation:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = e1_addr;
+        rec.regs[2] = 3u;
+        rec.regs[3] = 3u;
+        break;
+      case fe7::kAddrBattleGenerate:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = (NextXorshift(rng) % 3u == 0u) ? 0u : e1_addr;
+        break;
+      case fe7::kAddrBattleGenerateDisplayStats:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = NextXorshift(rng) % 2u;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -4133,6 +4290,12 @@ int main(int argc, char** argv) {
       case FuzzMode::kBallistaState: {
         auto bal_traces = MakeBallistaTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, bal_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kBattleGenState: {
+        auto bg_traces = MakeBattleGenTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, bg_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }
