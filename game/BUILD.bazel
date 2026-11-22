@@ -1,0 +1,4 @@
+# Decompiled game subsystems and canonical headers (Phase 3+).
+# Targets here may only depend on //game/... and
+# //runtime:{gba_ptr,gba_hal,dispatch}.
+package(default_visibility = ["//runtime:__subpackages__"])

@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <unordered_map>
+
+#include "absl/container/flat_hash_map.h"
 
 namespace fe7 {
 namespace {
@@ -13,14 +14,14 @@ namespace {
 constexpr size_t kRomHalfwordSlots = kRomRegionSize / 2u;
 
 // Zero-initialized in BSS so untouched virtual pages consume no physical RAM until registered.
-std::array<NativeFn, kRomHalfwordSlots> g_native_table{};
-FallbackExecutor g_fallback_executor = nullptr;
-bool g_track_fallbacks = true;
+std::array<NativeFn, kRomHalfwordSlots> gNativeTable{};
+FallbackExecutor absl_nullable gFallbackExecutor = nullptr;
+bool gTrackFallbacks = true;
 
 // Heap-allocated immortal singleton avoids static destruction order fiascos if any teardown hook
 // queries or clears fallback counters during process exit.
-std::unordered_map<uint32_t, uint64_t>& FallbackCounts() {
-  static auto* counts = new std::unordered_map<uint32_t, uint64_t>();
+absl::flat_hash_map<uint32_t, uint64_t>& FallbackCounts() {
+  static auto* counts = new absl::flat_hash_map<uint32_t, uint64_t>();
   return *counts;
 }
 
@@ -34,28 +35,28 @@ inline bool IsInRomRange(uint32_t aligned_addr) {
 
 }  // namespace
 
-void RegisterNative(uint32_t gba_addr, NativeFn fn) {
+void RegisterNative(uint32_t gba_addr, NativeFn absl_nullable fn) {
   const uint32_t aligned = NormalizeRomAddr(gba_addr);
   assert(IsInRomRange(aligned) && "RegisterNative address must be in 0x08000000..0x08FFFFFF");
   // Shift right by 1 to convert the 2-byte-aligned ROM offset into a halfword slot index.
-  g_native_table[(aligned - kRomBaseAddr) >> 1u] = fn;
+  gNativeTable[(aligned - kRomBaseAddr) >> 1u] = fn;
 }
 
-NativeFn LookupNative(uint32_t gba_addr) {
+NativeFn absl_nullable LookupNative(uint32_t gba_addr) {
   const uint32_t aligned = NormalizeRomAddr(gba_addr);
   // Out-of-ROM addresses (e.g., IWRAM thunks or BIOS calls) are never in the ROM dispatch table.
   if (!IsInRomRange(aligned)) {
     return nullptr;
   }
-  return g_native_table[(aligned - kRomBaseAddr) >> 1u];
+  return gNativeTable[(aligned - kRomBaseAddr) >> 1u];
 }
 
-void SetFallbackExecutor(FallbackExecutor executor) { g_fallback_executor = executor; }
+void SetFallbackExecutor(FallbackExecutor absl_nullable executor) { gFallbackExecutor = executor; }
 
-void SetTrackFallbacks(bool enabled) { g_track_fallbacks = enabled; }
+void SetTrackFallbacks(bool enabled) { gTrackFallbacks = enabled; }
 
 uint32_t GbaCall(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
-                 const uint32_t* stack_args, size_t stack_arg_count) {
+                 const uint32_t* absl_nullable stack_args, size_t stack_arg_count) {
   // Fast path: stay entirely in native C++20 when this ROM address has been decompiled.
   if (NativeFn fn = LookupNative(gba_addr); fn != nullptr) {
     return fn(r0, r1, r2, r3, stack_args);
@@ -63,15 +64,15 @@ uint32_t GbaCall(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2, uint3
   // Normalize before counting and invoking fallback so Thumb `addr | 1` and `addr` aggregate
   // under a single canonical ROM address.
   const uint32_t aligned = NormalizeRomAddr(gba_addr);
-  if (g_track_fallbacks) {
+  if (gTrackFallbacks) {
     ++FallbackCounts()[aligned];
   }
-  assert(g_fallback_executor != nullptr && "FallbackExecutor not set for un-decompiled call");
-  return g_fallback_executor(aligned, r0, r1, r2, r3, stack_args, stack_arg_count);
+  assert(gFallbackExecutor != nullptr && "FallbackExecutor not set for un-decompiled call");
+  return gFallbackExecutor(aligned, r0, r1, r2, r3, stack_args, stack_arg_count);
 }
 
 bool TryDispatchFromCpu(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
-                        const uint32_t* stack_args, uint32_t* out_r0) {
+                        const uint32_t* absl_nullable stack_args, uint32_t* absl_nullable out_r0) {
   NativeFn fn = LookupNative(gba_addr);
   if (fn == nullptr) {
     // Signal the fallback CPU to continue executing the original machine code at gba_addr.
@@ -99,9 +100,9 @@ std::vector<std::pair<uint32_t, uint64_t>> GetFallbackReport() {
 }
 
 void ResetDispatchTable() {
-  g_native_table.fill(nullptr);
-  g_fallback_executor = nullptr;
-  g_track_fallbacks = true;
+  gNativeTable.fill(nullptr);
+  gFallbackExecutor = nullptr;
+  gTrackFallbacks = true;
   FallbackCounts().clear();
 }
 

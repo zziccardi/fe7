@@ -11,6 +11,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/base/nullability.h"
+
 namespace fe7 {
 
 struct RomImage;
@@ -23,12 +25,12 @@ namespace hal {
 
 // --- Lifecycle & frame execution ---
 
-// Initializes the GBA hardware backend with a copy of `rom`, binds g_mem backing pointers, and
+// Initializes the GBA hardware backend with a copy of `rom`, binds gMem backing pointers, and
 // wires up the two-way dispatch hooks. Re-calling Init() shuts down any previous instance first.
 // Returns false if `rom` is empty or backend initialization fails.
 bool Init(const RomImage& rom);
 
-// Tears down the active GBA hardware backend, unregisters dispatch hooks, and clears g_mem.
+// Tears down the active GBA hardware backend, unregisters dispatch hooks, and clears gMem.
 // Safe to call even if Init() was not called or already shut down.
 void Shutdown();
 
@@ -37,7 +39,7 @@ void StepFrame(uint16_t key_input);
 
 // Returns a pointer to the latest rendered 32-bit XBGR8888 framebuffer
 // (kViewportWidth * kViewportHeight pixels). Valid while the HAL is initialized.
-const uint32_t* GetFramebuffer();
+const uint32_t* absl_nonnull GetFramebuffer();
 
 // --- Explicit MMIO access (0x04000000..0x040003FF) ---
 
@@ -55,9 +57,9 @@ void MmioWrite32(uint32_t addr, uint32_t value);
 
 // Copies `size_bytes` from host memory `src` into GBA Palette RAM, VRAM, or OAM using 16-bit
 // halfword writes to respect GBA graphics bus constraints.
-void PalWrite(uint32_t dst_addr, const void* src, size_t size_bytes);
-void VramWrite(uint32_t dst_addr, const void* src, size_t size_bytes);
-void OamWrite(uint32_t dst_addr, const void* src, size_t size_bytes);
+void PalWrite(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes);
+void VramWrite(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes);
+void OamWrite(uint32_t dst_addr, const void* absl_nonnull src, size_t size_bytes);
 
 // --- Explicit DMA transfer ---
 

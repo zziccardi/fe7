@@ -16,7 +16,7 @@ To run the game, you must provide your own legally obtained **FE7 US (`AE7E`)** 
 This project uses an incremental **Ship-of-Theseus** replacement strategy:
 
 1. **Hardware Abstraction (`GbaHal` + `libmgba`):** Embeds `libmgba` (MPL-2.0) behind an owned `GbaHal` interface for accurate GBA PPU, APU, DMA, timers, IRQs, BIOS SWIs, and an ARM7TDMI fallback CPU.
-2. **Two-Way Dispatch & Virtual Bus (`GbaPtr<T>`):** Maps GBA EWRAM/IWRAM/ROM addresses into native C++20 with bounds and alignment checks, and routes calls seamlessly between decompiled C++20 functions (`src/game/`) and the fallback CPU.
+2. **Two-Way Dispatch & Virtual Bus (`GbaPtr<T>`):** Maps GBA EWRAM/IWRAM/ROM addresses into native C++20 with bounds and alignment checks, and routes calls seamlessly between decompiled C++20 functions (`game/`) and the fallback CPU.
 3. **Behavioral Verification:** Decompiled functions are verified against original Thumb machine code using a per-function differential test harness (recorded traces + fuzzing + ASan/UBSan) and headless TAS lockstep suites.
 4. **Fallback Retirement & Modern Enhancements:** Once 100% of reachable game code runs natively in C++20, the ARM7TDMI fallback core is retired, unlocking native PC enhancements (16:9 widescreen, HD text, turn rewind, danger-zone overlay, mouse/gamepad support, and ImGui debug tooling).
 

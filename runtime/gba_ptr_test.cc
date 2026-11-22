@@ -30,13 +30,13 @@ class GbaPtrTest : public ::testing::Test {
     ewram_.fill(0);
     iwram_.fill(0);
     rom_.fill(0);
-    g_mem.ewram = ewram_.data();
-    g_mem.iwram = iwram_.data();
-    g_mem.rom = rom_.data();
-    g_mem.rom_size = rom_.size();
+    gMem.ewram = ewram_.data();
+    gMem.iwram = iwram_.data();
+    gMem.rom = rom_.data();
+    gMem.rom_size = rom_.size();
   }
 
-  void TearDown() override { g_mem = GbaMemoryMap{}; }
+  void TearDown() override { gMem = GbaMemoryMap{}; }
 
   alignas(16) std::array<uint8_t, 0x40000> ewram_;
   alignas(16) std::array<uint8_t, 0x8000> iwram_;

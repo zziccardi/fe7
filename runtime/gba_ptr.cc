@@ -2,6 +2,6 @@
 
 namespace fe7 {
 
-GbaMemoryMap g_mem;
+GbaMemoryMap gMem;
 
 }  // namespace fe7

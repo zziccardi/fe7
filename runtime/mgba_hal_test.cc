@@ -71,10 +71,9 @@ class MgbaHalTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ResetDispatchTable();
-    RomImage rom;
-    std::string err;
-    ASSERT_TRUE(LoadSyntheticRom(BuildSyntheticThumbRom(), &rom, &err)) << err;
-    ASSERT_TRUE(hal::Init(rom));
+    auto rom = LoadSyntheticRom(BuildSyntheticThumbRom());
+    ASSERT_TRUE(rom.ok()) << rom.status();
+    ASSERT_TRUE(hal::Init(*rom));
   }
 
   void TearDown() override {

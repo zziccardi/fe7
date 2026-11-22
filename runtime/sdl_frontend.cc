@@ -1,8 +1,10 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
-#include <string_view>
 
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
+#include "absl/flags/usage.h"
 #include "runtime/gba_hal.h"
 #include "runtime/rom_loader.h"
 
@@ -10,39 +12,26 @@
 #include <SDL3/SDL.h>
 #endif
 
-namespace {
-
-void PrintUsage(const char* argv0) {
-  std::cerr << "Usage: " << argv0 << " --rom <path>\n";
-}
-
-}  // namespace
+ABSL_FLAG(std::string, rom, "", "Path to a retail FE7 US (AE7E) GBA ROM.");
 
 int main(int argc, char** argv) {
-  std::string rom_path;
-  for (int i = 1; i < argc; ++i) {
-    const std::string_view arg(argv[i]);
-    if (arg == "--rom" && i + 1 < argc) {
-      rom_path = argv[++i];
-    } else if (arg == "--help" || arg == "-h") {
-      PrintUsage(argv[0]);
-      return 0;
-    }
-  }
+  absl::SetProgramUsageMessage(
+      "Native FE7 frontend. Example: fe7_native --rom=<path>");
+  absl::ParseCommandLine(argc, argv);
 
+  const std::string rom_path = absl::GetFlag(FLAGS_rom);
   if (rom_path.empty()) {
-    PrintUsage(argv[0]);
+    std::cerr << "Error: --rom is required.\n";
     return 1;
   }
 
-  fe7::RomImage rom;
-  std::string error;
-  if (!fe7::LoadRomFile(rom_path, &rom, &error)) {
-    std::cerr << "Error: " << error << "\n";
+  auto rom = fe7::LoadRomFile(rom_path);
+  if (!rom.ok()) {
+    std::cerr << "Error: " << rom.status().message() << "\n";
     return 1;
   }
 
-  if (!fe7::hal::Init(rom)) {
+  if (!fe7::hal::Init(*rom)) {
     std::cerr << "Error: failed to initialize GbaHal\n";
     return 1;
   }

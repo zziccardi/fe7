@@ -5,6 +5,12 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 
 namespace fe7 {
 namespace {
@@ -117,15 +123,12 @@ std::string ComputeSha1Hex(std::span<const uint8_t> data) {
   return out;
 }
 
-bool ValidateRetailRomBytes(std::span<const uint8_t> data, std::string* sha1_out,
-                            std::string* error_out) {
+absl::Status ValidateRetailRomBytes(std::span<const uint8_t> data,
+                                    std::string* absl_nullable sha1_out) {
   // Reject wrong-sized files before hashing so oversized or truncated inputs fail immediately.
   if (data.size() != kExpectedRomSize) {
-    if (error_out != nullptr) {
-      *error_out = "Invalid ROM size: expected 16777216 bytes (16 MiB), got " +
-                   std::to_string(data.size()) + " bytes";
-    }
-    return false;
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid ROM size: expected 16777216 bytes (16 MiB), got ", data.size(), " bytes"));
   }
 
   const std::string sha1 = ComputeSha1Hex(data);
@@ -133,80 +136,54 @@ bool ValidateRetailRomBytes(std::span<const uint8_t> data, std::string* sha1_out
     *sha1_out = sha1;
   }
   if (sha1 != kExpectedFe7UsSha1) {
-    if (error_out != nullptr) {
-      *error_out = "Invalid ROM SHA-1: expected " + std::string(kExpectedFe7UsSha1) + ", got " +
-                   sha1;
-    }
-    return false;
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid ROM SHA-1: expected ", kExpectedFe7UsSha1, ", got ", sha1));
   }
-  return true;
+  return absl::OkStatus();
 }
 
-bool LoadRomFile(const std::string& path, RomImage* out, std::string* error_out) {
-  if (out == nullptr) {
-    if (error_out != nullptr) {
-      *error_out = "Output RomImage pointer is null";
-    }
-    return false;
-  }
-
+absl::StatusOr<RomImage> LoadRomFile(std::string_view path) {
   // Open positioned at EOF (ios::ate) so tellg() yields the file size for a single-pass read.
-  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  std::ifstream file(std::string(path), std::ios::binary | std::ios::ate);
   if (!file.is_open()) {
-    if (error_out != nullptr) {
-      *error_out = "Failed to open ROM file: " + path;
-    }
-    return false;
+    return absl::NotFoundError(absl::StrCat("Failed to open ROM file: ", path));
   }
 
   const std::ifstream::pos_type file_size = file.tellg();
   if (file_size < 0) {
-    if (error_out != nullptr) {
-      *error_out = "Failed to determine ROM file size: " + path;
-    }
-    return false;
+    return absl::InternalError(absl::StrCat("Failed to determine ROM file size: ", path));
   }
 
   std::vector<uint8_t> buffer(static_cast<size_t>(file_size));
   file.seekg(0, std::ios::beg);
   if (!buffer.empty() &&
       !file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()))) {
-    if (error_out != nullptr) {
-      *error_out = "Failed to read ROM file: " + path;
-    }
-    return false;
+    return absl::InternalError(absl::StrCat("Failed to read ROM file: ", path));
   }
 
   std::string sha1;
-  if (!ValidateRetailRomBytes(buffer, &sha1, error_out)) {
-    return false;
+  if (absl::Status status = ValidateRetailRomBytes(buffer, &sha1); !status.ok()) {
+    return status;
   }
 
-  out->bytes = std::move(buffer);
-  out->sha1_hex = std::move(sha1);
-  out->is_synthetic = false;
-  return true;
+  RomImage out;
+  out.bytes = std::move(buffer);
+  out.sha1_hex = std::move(sha1);
+  out.is_synthetic = false;
+  return out;
 }
 
-bool LoadSyntheticRom(std::span<const uint8_t> data, RomImage* out, std::string* error_out) {
-  if (out == nullptr) {
-    if (error_out != nullptr) {
-      *error_out = "Output RomImage pointer is null";
-    }
-    return false;
-  }
+absl::StatusOr<RomImage> LoadSyntheticRom(std::span<const uint8_t> data) {
   // Enforce the GBA's 32 MiB Game Pak ROM ceiling so GbaPtr/mGBA bounds invariants remain valid.
   if (data.empty() || data.size() > 32u * 1024u * 1024u) {
-    if (error_out != nullptr) {
-      *error_out = "Synthetic ROM size must be between 1 byte and 32 MiB";
-    }
-    return false;
+    return absl::InvalidArgumentError("Synthetic ROM size must be between 1 byte and 32 MiB");
   }
 
-  out->bytes.assign(data.begin(), data.end());
-  out->sha1_hex = ComputeSha1Hex(out->bytes);
-  out->is_synthetic = true;
-  return true;
+  RomImage out;
+  out.bytes.assign(data.begin(), data.end());
+  out.sha1_hex = ComputeSha1Hex(out.bytes);
+  out.is_synthetic = true;
+  return out;
 }
 
 }  // namespace fe7

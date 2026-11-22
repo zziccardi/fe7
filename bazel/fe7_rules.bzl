@@ -23,7 +23,7 @@ FE7_GAME_COPTS = FE7_COMMON_COPTS + [
 FE7_RUNTIME_COPTS = FE7_COMMON_COPTS
 
 def fe7_game_cc_library(name, srcs = [], hdrs = [], deps = [], visibility = None, **kwargs):
-    """Defines a C++20 library in src/game/ or include/game/ with strict game copts."""
+    """Defines a C++20 library in game/ with strict game copts."""
     cc_library(
         name = name,
         srcs = srcs,
@@ -35,7 +35,7 @@ def fe7_game_cc_library(name, srcs = [], hdrs = [], deps = [], visibility = None
     )
 
 def fe7_runtime_cc_library(name, srcs = [], hdrs = [], deps = [], copts = [], visibility = None, **kwargs):
-    """Defines a C++20 library in src/runtime/ or include/runtime/."""
+    """Defines a C++20 library in runtime/."""
     cc_library(
         name = name,
         srcs = srcs,

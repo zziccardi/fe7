@@ -1,4 +1,4 @@
-#include "src/runtime/mgba_bridge.h"
+#include "runtime/mgba_bridge.h"
 
 #include <assert.h>
 #include <string.h>
