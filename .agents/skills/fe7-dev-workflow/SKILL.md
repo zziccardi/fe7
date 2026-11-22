@@ -75,6 +75,9 @@ python3 -m unittest discover -s tools -p '*_test.py' -v
   ./bazel-bin/runtime/fe7_headless --rom=fe7_us.gba --frames=120 \
     --register_native=false --record_traces=/tmp/wave.fe7t \
     --trace_addrs=0x08000BE0,...
+  # Fast triage when debugging a crash/assert in fe7_diff (~2s, line-buffered)
+  stdbuf -oL ./bazel-bin/runtime/fe7_diff --rom=fe7_us.gba --fuzz_iters=4 \
+    2>&1 | tail -n 35
   # Verify 0 r0 mismatches and 0 EWRAM/IWRAM mismatches
   ./bazel-bin/runtime/fe7_diff --rom=fe7_us.gba --traces=/tmp/wave.fe7t \
     --fuzz_iters=256
@@ -85,6 +88,7 @@ python3 -m unittest discover -s tools -p '*_test.py' -v
 - **ARM7TDMI → C++20 bit-exactness**:
   - Perform wrapping 32-bit multiplies in `uint32_t` before casting to `int32_t` to match Thumb `muls` without triggering UBSan signed-overflow errors.
   - Mask signed remainders as `uint32_t` (`static_cast<uint32_t>(mod) & 7u`) to match Thumb `ands` on negative inputs without negative indexing.
+  - Cast `uint8_t` to `uint32_t` before shifting left (`static_cast<uint32_t>(byte) << 8`) to avoid `-Wsign-conversion` / `-Wconversion` warnings under `FE7_GAME_COPTS`.
   - When storing function pointers in shared GBA structs (e.g., `Proc::proc_repeat_func`), store the exact GBA Thumb address (`kAddr... | 1u`) so un-decompiled ROM code inspecting the field stays binary-compatible.
   - `GbaPtr<T>` defers `std::is_trivially_copyable_v<T>` to dereference/arithmetic ops and constrains void ops with C++20 `requires`, allowing self-referential structs (`GbaPtr<Proc>`), forward declarations, and opaque `GbaPtr<const void>`.
   - `GbaPtr<T>` exposes `.get()` (host pointer) and public field `.addr` (`uint32_t` GBA address) — not `.raw()` or `.Host()`.
@@ -92,9 +96,11 @@ python3 -m unittest discover -s tools -p '*_test.py' -v
 - **Synthetic unit tests & `fe7_diff` traces**:
   - `tools/check_agent_rules.py` forbids `std::vector` in all of `game/` (including `*_test.cc`). For unit tests needing synthetic ROM tables (`kIInfoTableAddr = 0x08BE222C`, `PInfo`, `JInfo`), use a file-scope `alignas(16) std::array<uint8_t, 0x01000000u> gSyntheticRom{}`.
   - In `runtime/diff_runner.cc`, bound synthetic FE7 US item IDs to `% 0x9Fu` (`0x00..0x9E`; `0x9F` reads past `gItemData` and triggers `GbaPtr` region asserts).
-  - For map/pathfinding and Triangle Attack traces, initialize padded 2D maps (`height + 4` rows, `width + 2` stride) with impassable `0` padding borders, and populate `fe7::GetUnit(uid).addr` in EWRAM for any nonzero `uid` placed on `gMapUnit`.
+  - For map/pathfinding and Triangle Attack traces, initialize padded 2D maps via `InitSyntheticMapBuffer` with impassable `0` padding borders, and populate `fe7::GetUnit(uid).addr` in EWRAM for any nonzero `uid` placed on `gMapUnit`. For Enemy AI position-scoring (`AiGetFriendZonePositionScoreComponent` reads `±3` tiles without bounds checks), pass `pad_rows=4, pad_cols=4` on `gMapUnit` so edge-of-map loops stay in-bounds.
+  - Functions taking `>4` arguments (stack args, e.g., `AiSetDecision`, `AiUpdateDecision`) use `FuzzMode::kTracesOnly` in `runtime/diff_runner.cc` and must have thorough synthetic unit tests in `*_test.cc`.
   - Because `fe7_diff` steps 5 boot frames before running `DiffFunction()`, `InitArmFuncs` has already populated IWRAM ARM code, enabling direct differential verification of IWRAM-copied ARM routines like `MapFloodCoreRam` (`0x08004408`).
   - Verify exact side-effects against `corpus/fe7_us/asm/code.s` rather than assuming FE8 parity (e.g., `PInfo::bonus_con` vs `JInfo::base_con`, `InitBattleUnit` zeroing fields on both `gBattleActor` and `gBattleTarget`, `BattleGenerateRoundHits` capturing `attrs` before `BattleCheckBrave`).
-- **Git & PR hygiene**: Pass `--base main --head <branch>` (or `--base <parent-branch> --head <branch>` when stacking on an open PR) to `gh pr create`, and never commit `*.gba`, `corpus/`, or `.ghidra/`.
+- **Git & PR hygiene**: Check parent PR state (`gh pr view <N> --json state`) before stacking, pass `--base main --head <branch>` (or `--base <parent-branch> --head <branch>` when stacking on an open PR) to `gh pr create`, and never commit `*.gba`, `corpus/`, or `.ghidra/`.
+
 
 
