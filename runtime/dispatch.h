@@ -76,6 +76,14 @@ uint32_t GbaCall(uint32_t gba_addr, uint32_t r0 = 0, uint32_t r1 = 0,
                  const uint32_t* absl_nullable stack_args = nullptr,
                  size_t stack_arg_count = 0);
 
+// Invokes the active FallbackExecutor directly at gba_addr, bypassing any
+// registered NativeFn and fallback hit counting. Used by the differential test
+// harness to execute original Thumb code as an oracle.
+uint32_t CallFallbackDirect(uint32_t gba_addr, uint32_t r0 = 0, uint32_t r1 = 0,
+                            uint32_t r2 = 0, uint32_t r3 = 0,
+                            const uint32_t* absl_nullable stack_args = nullptr,
+                            size_t stack_arg_count = 0);
+
 // Hook called by the fallback CPU when branching to a ROM address.
 // Returns true if a native implementation was found and executed (writing its
 // return value to *out_r0 when non-null); returns false so the fallback CPU

@@ -11,6 +11,7 @@
 #include "runtime/gba_ptr.h"
 #include "runtime/mgba_bridge.h"
 #include "runtime/rom_loader.h"
+#include "runtime/trace_recorder.h"
 
 namespace fe7::hal {
 namespace {
@@ -35,7 +36,7 @@ std::array<uint32_t, kViewportWidth * kViewportHeight> gFramebuffer{};
 bool gBonusDiskUnlocked = false;
 
 // Called by libmgba's patched branch instructions to intercept fallback CPU
-// calls into decompiled native C++20 functions.
+// calls into decompiled native C++20 functions and optional trace recording.
 int MgbaDispatchHook(struct ARMCore* cpu, uint32_t pc) {
   // Never intercept returns to kSentinelLr (which terminates
   // fe7_mgba_run_until_sentinel) or branches outside Game Pak ROM (e.g.,
@@ -44,21 +45,36 @@ int MgbaDispatchHook(struct ARMCore* cpu, uint32_t pc) {
       pc >= (kRomBaseAddr + kRomRegionSize)) {
     return 0;
   }
+  const bool tracing = IsTraceRecordingActive();
+  const bool has_native = LookupNative(pc) != nullptr;
+  // Fast path: avoid reading GBA stack memory on unhooked branches.
+  if (!tracing && !has_native) {
+    return 0;
+  }
+
   // Snapshot up to 8 AAPCS stack-passed arguments from the GBA stack in case
-  // the native function takes more than 4 parameters.
+  // the native function or trace recorder needs more than 4 parameters.
   std::array<uint32_t, 8> stack_args{};
   const uint32_t sp = static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegSp));
   for (size_t i = 0; i < stack_args.size(); ++i) {
     stack_args[i] = fe7_mgba_load32(cpu, sp + static_cast<uint32_t>(i * 4u));
   }
 
+  const uint32_t r0 = static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR0));
+  const uint32_t r1 = static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR1));
+  const uint32_t r2 = static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR2));
+  const uint32_t r3 = static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR3));
+
+  if (tracing) {
+    MaybeRecordTrace(pc, r0, r1, r2, r3, stack_args.data());
+  }
+  if (!has_native) {
+    return 0;
+  }
+
   uint32_t out_r0 = 0;
-  const bool handled = TryDispatchFromCpu(
-      pc, static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR0)),
-      static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR1)),
-      static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR2)),
-      static_cast<uint32_t>(fe7_mgba_get_gpr(cpu, kArmRegR3)),
-      stack_args.data(), &out_r0);
+  const bool handled =
+      TryDispatchFromCpu(pc, r0, r1, r2, r3, stack_args.data(), &out_r0);
   if (!handled) {
     // Return 0 so libmgba executes the original Thumb/ARM code at `pc`.
     return 0;
