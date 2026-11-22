@@ -114,3 +114,161 @@ fe7_cc_test(
         "@abseil-cpp//absl/base:nullability",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ai_opcodes",
+    srcs = ["ai_opcodes.cc"],
+    hdrs = ["ai_opcodes.h"],
+    deps = [
+        ":ai",
+        ":ai_decide",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_opcodes_test",
+    srcs = ["ai_opcodes_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_decide",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "ai_actions",
+    srcs = ["ai_actions.cc"],
+    hdrs = ["ai_actions.h"],
+    deps = [
+        ":ai",
+        ":ai_decide",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_actions_test",
+    srcs = ["ai_actions_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_opcodes",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "ai_combat",
+    srcs = ["ai_combat.cc"],
+    hdrs = ["ai_combat.h"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_decide",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_combat_test",
+    srcs = ["ai_combat_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_combat",
+        ":ai_opcodes",
+        "//game:unit_hdr",
+        "//game/map:map",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "ai_cp",
+    srcs = ["ai_cp.cc"],
+    hdrs = ["ai_cp.h"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_combat",
+        ":ai_decide",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/action:action",
+        "//game/engine:proc",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_cp_test",
+    srcs = ["ai_cp_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_cp",
+        "//game:unit_hdr",
+        "//game/engine:proc",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)

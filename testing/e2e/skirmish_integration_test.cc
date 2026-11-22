@@ -32,11 +32,17 @@
 #include "absl/base/nullability.h"
 #include "game/action/action.h"
 #include "game/ai/ai.h"
+#include "game/ai/ai_actions.h"
+#include "game/ai/ai_combat.h"
+#include "game/ai/ai_cp.h"
 #include "game/ai/ai_decide.h"
+#include "game/ai/ai_opcodes.h"
+#include "game/ai/ai_script.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
 #include "game/battle/battle_sim.h"
+#include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item.h"
 #include "game/item/item.h"
@@ -946,6 +952,182 @@ TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
   EXPECT_EQ(CountUnitsByFaction(kFactionRed), red_before - 1);
 
   // Zero un-handled ARM7TDMI fallback calls across all 14 subsystems!
+  EXPECT_TRUE(GetFallbackReport().empty());
+}
+
+TEST_F(SkirmishIntegrationTest, FullEnemyAiTurnDecisionAndExecution) {
+  RandInit(0xA1E2E01u);
+
+  // Register lightweight native shims for the 4 low-level map/sim helpers that
+  // live outside the AI subsystem (`SetWorkingBmMap`, `MapAddInBoundedRange`,
+  // `MapFloodRangeExtend`, `BattleGenerateSimulation`), keeping the entire
+  // enemy turn 100% native with zero ARM7TDMI fallback.
+  RegisterNative(kAddrSetWorkingBmMap,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   *GbaPtr<uint32_t>(kWorkingMapAddr) = r0;
+                   return 0u;
+                 });
+  RegisterNative(kAddrMapAddInBoundedRange,
+                 [](uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   const int x = static_cast<int16_t>(r0);
+                   const int y = static_cast<int16_t>(r1);
+                   const int min_r = static_cast<int16_t>(r2);
+                   const int max_r = static_cast<int16_t>(r3);
+                   MapAddInRange(x, y, max_r, 1);
+                   if (min_r > 1) {
+                     MapAddInRange(x, y, min_r - 1, -1);
+                   }
+                   return 0u;
+                 });
+  RegisterNative(kAddrMapClearOther, StubNoOpZero);
+  RegisterNative(kAddrMapFloodRangeExtend, StubNoOpZero);
+  RegisterNative(kAddrRemoveUnitFromBallista, StubNoOpZero);
+  RegisterNative(kAddrBattleGenerateSimulation,
+                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   GbaPtr<BattleUnit> actor(kBattleActorAddr);
+                   GbaPtr<BattleUnit> target(kBattleTargetAddr);
+                   InitBattleUnit(actor, GbaPtr<const Unit>(r0));
+                   InitBattleUnit(target, GbaPtr<const Unit>(r1));
+                   ComputeBattleUnitStats(actor, target);
+                   ComputeBattleUnitStats(target, actor);
+                   return 0u;
+                 });
+
+  // Populate synthetic ROM tables for CpDecide, AI script opcodes, staff
+  // actions, and cardinal adjacent offsets.
+  WriteRom<uint32_t>(kAiDecideFuncsAddr + 0u,
+                     kAddrCpDecideSuspendOrRecover | 1u);
+  WriteRom<uint32_t>(kAiDecideFuncsAddr + 4u, kAddrCpDecideScriptA | 1u);
+  WriteRom<uint32_t>(kAiDecideFuncsAddr + 8u, kAddrCpDecideScriptB | 1u);
+  WriteRom<uint32_t>(kAiDecideFuncsAddr + 12u, 0u);
+
+  // Script A[0]: op 0x05 (AiScriptCmdAttack, 100% chance) -> op 0x03 (Goto 0).
+  constexpr uint32_t kScriptATableAddr = 0x08044F00u;
+  constexpr uint32_t kScriptA0Addr = 0x08045000u;
+  WriteRom<uint32_t>(kAiScriptTableAPtrAddr, kScriptATableAddr);
+  WriteRom<uint32_t>(kScriptATableAddr, kScriptA0Addr);
+  AiScriptCmd cmd_attack{};
+  cmd_attack.cmd = 0x05u;
+  cmd_attack.arg1 = 100u;
+  WriteRom(kScriptA0Addr, cmd_attack);
+  AiScriptCmd cmd_goto{};
+  cmd_goto.cmd = 0x03u;
+  cmd_goto.arg3 = 0u;
+  WriteRom(kScriptA0Addr + sizeof(AiScriptCmd), cmd_goto);
+
+  WriteRom<uint32_t>(kAiScriptOpcodeTableAddr + 0x03u * 4u,
+                     kAddrAiScriptCmdGoto | 1u);
+  WriteRom<uint32_t>(kAiScriptOpcodeTableAddr + 0x05u * 4u,
+                     kAddrAiScriptCmdAttack | 1u);
+
+  // Staff action table entry 0: Heal staff (IID 0x4A) -> AiTryHealStaff.
+  constexpr uint8_t kIidHealStaff = 0x4Au;
+  constexpr uint8_t kIidVulnerary = 0x6Bu;
+  IInfo heal_info{};
+  heal_info.id = kIidHealStaff;
+  heal_info.kind = 4;               // Staff
+  heal_info.attributes = 0x04u;     // Staff attribute
+  heal_info.required_wexp = 1;      // E-rank
+  heal_info.encoded_range = 0x11u;  // 1-1 range
+  WriteRom(kIInfoTableAddr + kIidHealStaff * sizeof(IInfo), heal_info);
+
+  IInfo vuln_info{};
+  vuln_info.id = kIidVulnerary;
+  vuln_info.kind = 9;
+  WriteRom(kIInfoTableAddr + kIidVulnerary * sizeof(IInfo), vuln_info);
+
+  WriteRom<uint32_t>(kAiStaffActionTableAddr + 0u, kIidHealStaff);
+  WriteRom<uint32_t>(kAiStaffActionTableAddr + 4u, kAddrAiTryHealStaff | 1u);
+  WriteRom<uint32_t>(kAiStaffActionTableAddr + 8u, 0u);
+
+  constexpr int32_t kCardOffsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+  for (int i = 0; i < 4; ++i) {
+    WriteRom<int32_t>(kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u,
+                      kCardOffsets[i][0]);
+    WriteRom<int32_t>(
+        kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u + 4u,
+        kCardOffsets[i][1]);
+  }
+
+  GbaPtr<Unit> lyn = GetUnit(1);
+  GbaPtr<Unit> brigand_a = GetUnit(0x81);
+  GbaPtr<Unit> brigand_b = GetUnit(0x82);
+  GbaPtr<AiDecision> dec(kAiDecisionAddr);
+  GbaPtr<Proc> proc(kProcsAddr);
+
+  // Switch to Red (Enemy) phase.
+  *GbaPtr<uint8_t>(kAiPlayStatusAddr + 0x0Fu) = kFactionRed;
+
+  // --- Phase A: Wounded enemy recovers with Vulnerary via CpDecideMain ---
+  brigand_a->hp = 4;  // Below 50% HP -> recovery mode
+  brigand_a->items[1] = static_cast<uint16_t>((3u << 8) | kIidVulnerary);
+  *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = brigand_a;
+  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_a->id);
+  *GbaPtr<uint8_t>(kAiStateAddr + 0x79u) = 0u;
+  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Bu) = 2u;  // Stationary recovery check
+  AiClearDecision();
+
+  CpDecideMain();
+  EXPECT_EQ(dec->action_performed, 1);
+  EXPECT_EQ(dec->action_id, 6u);  // Use healing item
+  EXPECT_EQ(dec->item_slot, 1u);
+
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(*GbaPtr<uint32_t>(proc.addr + 0x2Cu), kAddrCpPerformUseItem | 1u);
+
+  // --- Phase B: Healthy enemy executes Script A attack + combat sim ---
+  lyn->x = 2;
+  lyn->y = 3;
+  brigand_b->x = 4;
+  brigand_b->y = 3;
+  brigand_b->hp = brigand_b->max_hp;
+  brigand_b->ai_a = 0u;
+  brigand_b->ai_a_pc = 0u;
+  SyncUnitMap();
+
+  *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = brigand_b;
+  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_b->id);
+  *GbaPtr<uint8_t>(kAiStateAddr + 0x79u) = 0u;
+  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Bu) = 0u;
+  AiClearDecision();
+
+  CpDecideMain();
+  EXPECT_EQ(dec->action_performed, 1);
+  EXPECT_EQ(dec->action_id, 1u);  // Attack
+  EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(lyn->id));
+
+  // --- Phase C: Staff healer dispatches Heal staff via AiTrySpecialAction ---
+  brigand_a->x = 5;
+  brigand_a->y = 3;
+  brigand_a->ai_flags |= 1u;  // Flagged for recovery
+  brigand_b->wexp[4] = 251u;  // S-rank staves
+  brigand_b->items[1] = static_cast<uint16_t>((30u << 8) | kIidHealStaff);
+  SyncUnitMap();
+
+  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Cu) = 80u;  // Heal threshold 80%
+  AiClearDecision();
+  EXPECT_TRUE(AiTrySpecialAction(kAddrAiIsUnitEnemy | 1u));
+  EXPECT_EQ(dec->action_performed, 1);
+  EXPECT_EQ(dec->action_id, 5u);  // Staff action
+  EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(brigand_a->id));
+
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(*GbaPtr<uint32_t>(proc.addr + 0x2Cu), kAddrCpPerformStaff | 1u);
+
+  // --- Phase D: CpPerformActionLoop syncs unit coords and breaks proc ---
+  dec->action_id = 0u;  // Wait
+  dec->x_move = 3u;
+  dec->y_move = 4u;
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(*GbaPtr<uint32_t>(proc.addr + 0x2Cu), kAddrCpPerformWaitDone | 1u);
+  CpPerformActionLoop(proc);
+  EXPECT_EQ(brigand_b->x, 3);
+  EXPECT_EQ(brigand_b->y, 4);
+
+  // Zero un-handled ARM7TDMI fallback calls across the full AI turn!
   EXPECT_TRUE(GetFallbackReport().empty());
 }
 

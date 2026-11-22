@@ -18,7 +18,11 @@
 #include "absl/flags/usage.h"
 #include "game/action/action.h"
 #include "game/ai/ai.h"
+#include "game/ai/ai_actions.h"
+#include "game/ai/ai_combat.h"
+#include "game/ai/ai_cp.h"
 #include "game/ai/ai_decide.h"
+#include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
@@ -70,6 +74,10 @@ enum class FuzzMode {
   kActionState,
   kAiDecideState,
   kAiScriptState,
+  kAiOpcodeState,
+  kAiActionState,
+  kAiCombatState,
+  kAiCpState,
   kTracesOnly,
 };
 
@@ -729,6 +737,241 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kAiScriptState},
     {"AiIsUnitEnemyWithJid", fe7::kAddrAiIsUnitEnemyWithJid, true,
      FuzzMode::kAiScriptState},
+    // AI Script Opcodes (0x04..0x1B) & Movement/Target-Search Helpers (41).
+    {"AiTryFindUnitByPid", fe7::kAddrAiTryFindUnitByPid, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiTryFindClosestUnitMatching", fe7::kAddrAiTryFindClosestUnitMatching,
+     true, FuzzMode::kAiOpcodeState},
+    {"AiTryFindClosestUnitMatchingNoDoors",
+     fe7::kAddrAiTryFindClosestUnitMatchingNoDoors, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestTerrainInList", fe7::kAddrAiFindNearestTerrainInList, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestAdjacentToTerrainInList",
+     fe7::kAddrAiFindNearestAdjacentToTerrainInList, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestDoorOrChest", fe7::kAddrAiFindNearestDoorOrChest, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindBestAdjacentPosition", fe7::kAddrAiFindBestAdjacentPosition, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestLootableTile", fe7::kAddrAiFindNearestLootableTile, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiMoveTowards", fe7::kAddrAiMoveTowards, false, FuzzMode::kTracesOnly},
+    {"AiMoveTowardsNoDoors", fe7::kAddrAiMoveTowardsNoDoors, false,
+     FuzzMode::kTracesOnly},
+    {"AiScriptCmdAttackPid", fe7::kAddrAiScriptCmdAttackPid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttack", fe7::kAddrAiScriptCmdAttack, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop06", fe7::kAddrAiScriptCmdNop06, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttackInPlace", fe7::kAddrAiScriptCmdAttackInPlace, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttackJid", fe7::kAddrAiScriptCmdAttackJid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAction09", fe7::kAddrAiScriptCmdAction09, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAction0A", fe7::kAddrAiScriptCmdAction0A, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAction0B", fe7::kAddrAiScriptCmdAction0B, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToCoord", fe7::kAddrAiScriptCmdMoveToCoord, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToPid", fe7::kAddrAiScriptCmdMoveToPid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop0E", fe7::kAddrAiScriptCmdNop0E, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToJid", fe7::kAddrAiScriptCmdMoveToJid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdLoot", fe7::kAddrAiScriptCmdLoot, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToSafe", fe7::kAddrAiScriptCmdMoveToSafe, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToEnemy", fe7::kAddrAiScriptCmdMoveToEnemy, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToEnemyNoDoors", fe7::kAddrAiScriptCmdMoveToEnemyNoDoors,
+     false, FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop14", fe7::kAddrAiScriptCmdNop14, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop15", fe7::kAddrAiScriptCmdNop15, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveRandom", fe7::kAddrAiScriptCmdMoveRandom, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdEscape", fe7::kAddrAiScriptCmdEscape, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiGetObstacleAttackPosScore", fe7::kAddrAiGetObstacleAttackPosScore, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindBestObstacleAttackPos", fe7::kAddrAiFindBestObstacleAttackPos, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestObstacleTerrain", fe7::kAddrAiFindNearestObstacleTerrain,
+     true, FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttackObstacle", fe7::kAddrAiScriptCmdAttackObstacle, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToTerrain", fe7::kAddrAiScriptCmdMoveToTerrain, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToTerrainList", fe7::kAddrAiScriptCmdMoveToTerrainList,
+     false, FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdLabel", fe7::kAddrAiScriptCmdLabel, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiBerserkAction", fe7::kAddrAiBerserkAction, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiBerserkMove", fe7::kAddrAiBerserkMove, false, FuzzMode::kAiOpcodeState},
+    {"AiReturnTrue", fe7::kAddrAiReturnTrue, true, FuzzMode::kAiOpcodeState},
+    {"AiCheckJobRankAndReturnTrue", fe7::kAddrAiCheckJobRankAndReturnTrue, true,
+     FuzzMode::kAiOpcodeState},
+    // Batch 2: AI special actions, patrol/target-lock & healing staff AI (28).
+    {"AiTryAttackFromPos", fe7::kAddrAiTryAttackFromPos, true,
+     FuzzMode::kAiActionState},
+    {"AiIsTileOccupiedByEnemy", fe7::kAddrAiIsTileOccupiedByEnemy, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionCountEnemiesInRange",
+     fe7::kAddrAiScriptActionCountEnemiesInRange, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionMoveOrAttackInRegion",
+     fe7::kAddrAiScriptActionMoveOrAttackInRegion, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionLoadUnitCounter", fe7::kAddrAiScriptActionLoadUnitCounter,
+     true, FuzzMode::kAiActionState},
+    {"AiScriptActionClearAiStateFlagA",
+     fe7::kAddrAiScriptActionClearAiStateFlagA, true, FuzzMode::kAiActionState},
+    {"AiScriptActionClearAiStateFlagB",
+     fe7::kAddrAiScriptActionClearAiStateFlagB, true, FuzzMode::kAiActionState},
+    {"AiGetNextPatrolWaypoint", fe7::kAddrAiGetNextPatrolWaypoint, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionPatrolOrAttack", fe7::kAddrAiScriptActionPatrolOrAttack,
+     true, FuzzMode::kAiActionState},
+    {"AiScriptActionIsActiveUnitInRect",
+     fe7::kAddrAiScriptActionIsActiveUnitInRect, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionTalk", fe7::kAddrAiScriptActionTalk, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionProbeLeaderTarget",
+     fe7::kAddrAiScriptActionProbeLeaderTarget, true, FuzzMode::kAiActionState},
+    {"AiIsUnitMatchingTargetPid", fe7::kAddrAiIsUnitMatchingTargetPid, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionProbePidTarget", fe7::kAddrAiScriptActionProbePidTarget,
+     true, FuzzMode::kAiActionState},
+    {"AiIsUnitMatchingCachedUid", fe7::kAddrAiIsUnitMatchingCachedUid, true,
+     FuzzMode::kAiActionState},
+    {"AiIsUnitInDirectionOfCachedTarget",
+     fe7::kAddrAiIsUnitInDirectionOfCachedTarget, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionAttackOrChaseCachedTarget",
+     fe7::kAddrAiScriptActionAttackOrChaseCachedTarget, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionStaffOrAttack", fe7::kAddrAiScriptActionStaffOrAttack, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionLootOrAttack", fe7::kAddrAiScriptActionLootOrAttack, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionBallista", fe7::kAddrAiScriptActionBallista, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionMoveToCoord", fe7::kAddrAiScriptActionMoveToCoord, true,
+     FuzzMode::kAiActionState},
+    {"AiScriptActionWait", fe7::kAddrAiScriptActionWait, true,
+     FuzzMode::kAiActionState},
+    {"AiGetStaffActionIndex", fe7::kAddrAiGetStaffActionIndex, true,
+     FuzzMode::kAiActionState},
+    {"AiTrySpecialAction", fe7::kAddrAiTrySpecialAction, true,
+     FuzzMode::kAiActionState},
+    {"AiFindBestAdjacentStaffPos", fe7::kAddrAiFindBestAdjacentStaffPos, true,
+     FuzzMode::kAiActionState},
+    {"AiTryHealStaff", fe7::kAddrAiTryHealStaff, false,
+     FuzzMode::kAiActionState},
+    {"AiTryPhysicStaff", fe7::kAddrAiTryPhysicStaff, false,
+     FuzzMode::kAiActionState},
+    {"AiTryFortifyStaff", fe7::kAddrAiTryFortifyStaff, false,
+     FuzzMode::kAiActionState},
+    // Batch 3: AI combat-sim loop, attack/steal/ballista & recovery (18).
+    {"AiPerformAttack", fe7::kAddrAiPerformAttack, false,
+     FuzzMode::kAiCombatState},
+    {"AiPerformAttackInCurrentMovement",
+     fe7::kAddrAiPerformAttackInCurrentMovement, false,
+     FuzzMode::kAiCombatState},
+    {"AiFillTargetWeaponRangeMap", fe7::kAddrAiFillTargetWeaponRangeMap, false,
+     FuzzMode::kAiCombatState},
+    {"AiMakeRangeMapForUnitAndMov", fe7::kAddrAiMakeRangeMapForUnitAndMov,
+     false, FuzzMode::kAiCombatState},
+    {"AiSimulateBallistaAttack", fe7::kAddrAiSimulateBallistaAttack, true,
+     FuzzMode::kAiCombatState},
+    {"AiGetStealPositionScore", fe7::kAddrAiGetStealPositionScore, true,
+     FuzzMode::kAiCombatState},
+    {"AiTryStealAction", fe7::kAddrAiTryStealAction, true,
+     FuzzMode::kAiCombatState},
+    {"AiSimulateBestBattleAgainstTarget",
+     fe7::kAddrAiSimulateBestBattleAgainstTarget, true,
+     FuzzMode::kAiCombatState},
+    {"AiSimulateBestBallistaBattleAgainstTarget",
+     fe7::kAddrAiSimulateBestBallistaBattleAgainstTarget, true,
+     FuzzMode::kAiCombatState},
+    {"AiGetCombatPositionScore", fe7::kAddrAiGetCombatPositionScore, true,
+     FuzzMode::kAiCombatState},
+    {"AiIsCombatSimInvalid", fe7::kAddrAiIsCombatSimInvalid, true,
+     FuzzMode::kAiCombatState},
+    {"AiSimulateBattleAndComputeScore",
+     fe7::kAddrAiSimulateBattleAndComputeScore, true, FuzzMode::kAiCombatState},
+    {"AiFindBestRecoveryTile", fe7::kAddrAiFindBestRecoveryTile, true,
+     FuzzMode::kAiCombatState},
+    {"AiTryUseHealingItem", fe7::kAddrAiTryUseHealingItem, true,
+     FuzzMode::kAiCombatState},
+    {"AiPerformEscape", fe7::kAddrAiPerformEscape, true,
+     FuzzMode::kAiCombatState},
+    {"AiTryPostMoveSpecialAction", fe7::kAddrAiTryPostMoveSpecialAction, false,
+     FuzzMode::kAiCombatState},
+    {"AiTryPostMoveActionOrAttack", fe7::kAddrAiTryPostMoveActionOrAttack,
+     false, FuzzMode::kAiCombatState},
+    {"AiTryStealFromPos", fe7::kAddrAiTryStealFromPos, true,
+     FuzzMode::kAiCombatState},
+    // Batch 4: Top-level CpDecide/CpPerform state-machine procs (28).
+    {"CpDecideMain", fe7::kAddrCpDecideMain, false, FuzzMode::kAiCpState},
+    {"CpDecideSuspendOrRecover", fe7::kAddrCpDecideSuspendOrRecover, false,
+     FuzzMode::kAiCpState},
+    {"CpDecideDoorOrChest", fe7::kAddrCpDecideDoorOrChest, false,
+     FuzzMode::kAiCpState},
+    {"CpDecideScriptA", fe7::kAddrCpDecideScriptA, false, FuzzMode::kAiCpState},
+    {"CpDecideScriptB", fe7::kAddrCpDecideScriptB, false, FuzzMode::kAiCpState},
+    {"AiCursorFlashLoop", fe7::kAddrAiCursorFlashLoop, false,
+     FuzzMode::kTracesOnly},
+    {"StartAiCursorFlash", fe7::kAddrStartAiCursorFlash, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformEnsureMapBgm", fe7::kAddrCpPerformEnsureMapBgm, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformCameraWatch", fe7::kAddrCpPerformCameraWatch, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformBeginMove", fe7::kAddrCpPerformBeginMove, false,
+     FuzzMode::kTracesOnly},
+    {"AiEndMuAndRefreshUnits", fe7::kAddrAiEndMuAndRefreshUnits, false,
+     FuzzMode::kTracesOnly},
+    {"CpPerformAttack", fe7::kAddrCpPerformAttack, false,
+     FuzzMode::kTracesOnly},
+    {"CpPerformEscapeMove", fe7::kAddrCpPerformEscapeMove, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformSteal", fe7::kAddrCpPerformSteal, false, FuzzMode::kTracesOnly},
+    {"CpPerformPillageOrChest", fe7::kAddrCpPerformPillageOrChest, true,
+     FuzzMode::kTracesOnly},
+    {"CpPerformStaff", fe7::kAddrCpPerformStaff, true, FuzzMode::kTracesOnly},
+    {"CpPerformUseItem", fe7::kAddrCpPerformUseItem, true,
+     FuzzMode::kTracesOnly},
+    {"CpPerformActionNop", fe7::kAddrCpPerformActionNop, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformTalk", fe7::kAddrCpPerformTalk, true, FuzzMode::kAiCpState},
+    {"CpPerformRideBallista", fe7::kAddrCpPerformRideBallista, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformExitBallista", fe7::kAddrCpPerformExitBallista, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformTargetCursor", fe7::kAddrCpPerformTargetCursor, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformDispatchAction", fe7::kAddrCpPerformDispatchAction, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformActionLoop", fe7::kAddrCpPerformActionLoop, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformCleanup", fe7::kAddrCpPerformCleanup, false,
+     FuzzMode::kTracesOnly},
+    {"CpPerformWaitDone", fe7::kAddrCpPerformWaitDone, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformWaitEscape", fe7::kAddrCpPerformWaitEscape, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformWaitSteal", fe7::kAddrCpPerformWaitSteal, true,
+     FuzzMode::kAiCpState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -2584,6 +2827,10 @@ std::vector<fe7::TraceRecord> MakeAiScriptTraces(uint32_t gba_addr,
     const uint32_t ub_addr = 0x02000000u + unit_b_off;
     std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
                 &ua_addr, sizeof(ua_addr));
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
 
     // Seed phase and AI state flags.
     static constexpr uint8_t kFactions[3] = {0x00u, 0x40u, 0x80u};
@@ -2690,6 +2937,886 @@ std::vector<fe7::TraceRecord> MakeAiScriptTraces(uint32_t gba_addr,
       case fe7::kAddrAiScriptCmdChangeAi:
       case fe7::kAddrAiScriptCmdGoto:
         rec.regs[0] = ua_addr + 0x43u;  // &active->ai_a_pc
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+// Synthesizes valid 8x8 padded maps (with 4-tile padding on gMapUnit), live
+// units, AI combat score coefficients, traps, script commands, and scratch
+// buffers for the 41 AI opcode & movement/target-search functions.
+std::vector<fe7::TraceRecord> MakeAiOpcodeTraces(uint32_t gba_addr,
+                                                 size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x09C0DE55u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x15000u;
+    constexpr uint32_t kScratchOff = 0x16000u;
+    constexpr uint32_t kScratch2Off = 0x16020u;
+    constexpr uint32_t kCmdOff = 0x16040u;
+    constexpr uint32_t kTerrainListOff = 0x16080u;
+    constexpr uint32_t kPidListOff = 0x160A0u;
+    const uint32_t scratch_addr = 0x02000000u + kScratchOff;
+    const uint32_t scratch2_addr = 0x02000000u + kScratch2Off;
+    const uint32_t cmd_addr = 0x02000000u + kCmdOff;
+    const uint32_t tlist_addr = 0x02000000u + kTerrainListOff;
+    const uint32_t pid_list_addr = 0x02000000u + kPidListOff;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x01u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    const uint32_t rows = kH + 4u;
+    const uint32_t stride = kW + 2u;
+    const uint32_t unit_rows = kH + 8u;
+    const uint32_t unit_stride = kW + 8u;
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    const uint32_t unit_tiles = kUnitMapBufOff + unit_rows * 4u;
+    const uint32_t mov_tiles = kMovMapBufOff + rows * 4u;
+    const uint32_t rng_tiles = kRngMapBufOff + rows * 4u;
+    const uint32_t other_tiles = kOtherMapBufOff + rows * 4u;
+
+    static constexpr uint8_t kDoorChestTerrains[6] = {1u,    2u,    0x03u,
+                                                      0x1Eu, 0x21u, 0x1Bu};
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        const uint32_t toff = static_cast<uint32_t>(y + 2) * stride +
+                              static_cast<uint32_t>(x + 1);
+        const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                               static_cast<uint32_t>(x + 4);
+        rec.ewram[terrain_tiles + toff] =
+            (NextXorshift(rng) % 5u == 0u)
+                ? kDoorChestTerrains[NextXorshift(rng) % 6u]
+                : static_cast<uint8_t>(1u + (NextXorshift(rng) % 2u));
+        const uint32_t u = NextXorshift(rng) % 10u;
+        if (u == 0u) rec.ewram[unit_tiles + utoff] = 0x01u;
+        if (u == 1u) rec.ewram[unit_tiles + utoff] = 0x81u;
+        rec.ewram[mov_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 6u)
+                : 0xFFu;
+        rec.ewram[rng_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 10u)
+                : 0xFFu;
+        rec.ewram[other_tiles + toff] =
+            static_cast<uint8_t>(NextXorshift(rng) & 0x1Fu);
+      }
+    }
+
+    // Clear trap array so GetTrapAt terminates cleanly.
+    std::memset(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), 0,
+                65u * sizeof(fe7::Trap));
+
+    // Populate live units: enemy 0x81 (active) and player 0x01.
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    fe7::Unit ua{};
+    std::memcpy(&ua, rec.ewram.data() + unit_a_off, sizeof(ua));
+    ua.id = static_cast<int8_t>(0x81);
+    ua.x = static_cast<int8_t>(1 + (NextXorshift(rng) % (kW - 2)));
+    ua.y = static_cast<int8_t>(1 + (NextXorshift(rng) % (kH - 2)));
+    ua.flags &= ~fe7::kUnitFlagsUnavailable;
+    std::memcpy(rec.ewram.data() + unit_a_off, &ua, sizeof(ua));
+
+    fe7::Unit ub{};
+    std::memcpy(&ub, rec.ewram.data() + unit_b_off, sizeof(ub));
+    ub.id = 0x01;
+    ub.x = static_cast<int8_t>(1 + (NextXorshift(rng) % (kW - 2)));
+    ub.y = static_cast<int8_t>(1 + (NextXorshift(rng) % (kH - 2)));
+    ub.flags &= ~fe7::kUnitFlagsUnavailable;
+    std::memcpy(rec.ewram.data() + unit_b_off, &ub, sizeof(ub));
+
+    const uint8_t target_pid =
+        fe7::gMem.rom[(ub.pinfo.addr - 0x08000000u) + 4u];
+    const uint8_t target_jid =
+        fe7::gMem.rom[(ub.jinfo.addr - 0x08000000u) + 4u];
+
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t ua_addr = 0x02000000u + unit_a_off;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+
+    // Set gAiCombatScoreCoeffPtr to valid ROM table entry 0.
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+
+    // Valid chapter (0 or 8) and faction (0x80) for escape/AI helpers.
+    rec.ewram[fe7::kAiPlayStatusAddr + 0x0Eu - 0x02000000u] =
+        (NextXorshift(rng) & 1u) ? 8u : 0u;
+    rec.ewram[fe7::kAiPlayStatusAddr + 0x0Fu - 0x02000000u] = 0x80u;
+    rec.ewram[fe7::kAiStateAddr + 0x7Bu - 0x02000000u] =
+        static_cast<uint8_t>(NextXorshift(rng) & 3u);
+    rec.ewram[fe7::kAiStateAddr + 0x7Eu - 0x02000000u] = 0xFFu;
+    rec.ewram[fe7::kAiStateAddr + 0x85u - 0x02000000u] = 6u;
+
+    // Seed terrain list {1, 2, 0} and PID list {target_pid, 0}.
+    const uint8_t tlist[3] = {1u, 2u, 0u};
+    std::memcpy(rec.ewram.data() + kTerrainListOff, tlist, sizeof(tlist));
+    const uint16_t plist[2] = {target_pid, 0u};
+    std::memcpy(rec.ewram.data() + kPidListOff, plist, sizeof(plist));
+    rec.ewram[kScratchOff] = target_jid;
+
+    // Seed synthetic AiScriptCmd at cmd_addr.
+    fe7::AiScriptCmd cmd{};
+    cmd.arg1 = static_cast<uint8_t>(NextXorshift(rng) % 101u);
+    cmd.arg2 = 0xFFu;
+    cmd.arg3 = 1u;  // single-byte terrain list {1, 0} with u32_arg4 low byte 0
+    cmd.u32_arg4 = 0u;
+    cmd.u32_arg8 = (NextXorshift(rng) & 1u) ? 0u : pid_list_addr;
+    if (gba_addr == fe7::kAddrAiScriptCmdMoveToCoord) {
+      cmd.arg1 = static_cast<uint8_t>(NextXorshift(rng) % kW);
+      cmd.arg3 = static_cast<uint8_t>(NextXorshift(rng) % kH);
+    } else if (gba_addr == fe7::kAddrAiScriptCmdMoveToPid ||
+               gba_addr == fe7::kAddrAiScriptCmdAttackPid) {
+      cmd.u32_arg4 = target_pid;
+    } else if (gba_addr == fe7::kAddrAiScriptCmdMoveToJid ||
+               gba_addr == fe7::kAddrAiScriptCmdAttackJid) {
+      cmd.u32_arg4 = target_jid;
+    } else if (gba_addr == fe7::kAddrAiScriptCmdMoveToTerrainList) {
+      cmd.u32_arg8 = tlist_addr;
+    } else if (gba_addr == fe7::kAddrAiScriptCmdLoot) {
+      cmd.arg3 = static_cast<uint8_t>(NextXorshift(rng) % 3u);
+    }
+    std::memcpy(rec.ewram.data() + kCmdOff, &cmd, sizeof(cmd));
+    std::memcpy(rec.iwram.data() + (fe7::kAiScriptCurAddr - 0x03000000u),
+                &cmd_addr, sizeof(cmd_addr));
+    rec.iwram[fe7::kAiScriptDoneAddr - 0x03000000u] = 1u;
+
+    switch (gba_addr) {
+      case fe7::kAddrAiTryFindUnitByPid:
+        rec.regs[0] = target_pid;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiTryFindClosestUnitMatching:
+      case fe7::kAddrAiTryFindClosestUnitMatchingNoDoors:
+        rec.regs[0] = fe7::kAddrAiIsUnitEnemy | 1u;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindNearestTerrainInList:
+      case fe7::kAddrAiFindNearestAdjacentToTerrainInList:
+      case fe7::kAddrAiFindNearestObstacleTerrain:
+        rec.regs[0] = tlist_addr;
+        rec.regs[1] = NextXorshift(rng) & 3u;
+        rec.regs[2] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindNearestDoorOrChest:
+        rec.regs[0] = NextXorshift(rng) & 0xFu;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindBestAdjacentPosition:
+        rec.regs[0] = 1u + (NextXorshift(rng) % (kW - 2));
+        rec.regs[1] = 1u + (NextXorshift(rng) % (kH - 2));
+        rec.regs[2] = fe7::kAddrAiGetMoveCostAt | 1u;
+        rec.regs[3] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindNearestLootableTile:
+        rec.regs[0] = scratch_addr;
+        rec.regs[1] = scratch2_addr;
+        break;
+      case fe7::kAddrAiGetObstacleAttackPosScore:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrAiFindBestObstacleAttackPos:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        rec.regs[2] = scratch_addr;
+        rec.regs[3] = scratch2_addr;
+        break;
+      case fe7::kAddrAiCheckJobRankAndReturnTrue:
+        rec.regs[0] = scratch_addr;
+        break;
+      case fe7::kAddrAiBerserkAction:
+      case fe7::kAddrAiBerserkMove:
+      case fe7::kAddrAiReturnTrue:
+        break;
+      default:
+        // All AiScriptCmd* handlers take `GbaPtr<uint8_t> pc_ptr`.
+        rec.regs[0] = ua_addr + 0x43u;
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+std::vector<fe7::TraceRecord> MakeAiActionTraces(uint32_t gba_addr,
+                                                 size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x0A1AC701u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x15000u;
+    constexpr uint32_t kScratchOff = 0x16000u;
+    constexpr uint32_t kParamsOff = 0x16040u;
+    constexpr uint32_t kCoordsOff = 0x16080u;
+    const uint32_t scratch_addr = 0x02000000u + kScratchOff;
+    const uint32_t params_addr = 0x02000000u + kParamsOff;
+    const uint32_t coords_addr = 0x02000000u + kCoordsOff;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x01u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    const uint32_t rows = kH + 4u;
+    const uint32_t stride = kW + 2u;
+    const uint32_t unit_rows = kH + 8u;
+    const uint32_t unit_stride = kW + 8u;
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    const uint32_t unit_tiles = kUnitMapBufOff + unit_rows * 4u;
+    const uint32_t mov_tiles = kMovMapBufOff + rows * 4u;
+    const uint32_t rng_tiles = kRngMapBufOff + rows * 4u;
+    const uint32_t other_tiles = kOtherMapBufOff + rows * 4u;
+
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        const uint32_t toff = static_cast<uint32_t>(y + 2) * stride +
+                              static_cast<uint32_t>(x + 1);
+        const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                               static_cast<uint32_t>(x + 4);
+        rec.ewram[terrain_tiles + toff] =
+            static_cast<uint8_t>(1u + (NextXorshift(rng) % 2u));
+        rec.ewram[mov_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 6u)
+                : 0xFFu;
+        rec.ewram[rng_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 4u)
+                : 0x00u;
+        rec.ewram[other_tiles + toff] =
+            static_cast<uint8_t>(NextXorshift(rng) & 0x3Fu);
+        rec.ewram[unit_tiles + utoff] = 0u;
+      }
+    }
+
+    // Clear trap array so GetTrapAt / GetBallistaItemAt terminate cleanly.
+    std::memset(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), 0,
+                65u * sizeof(fe7::Trap));
+
+    // Populate enemy active 0x81, enemy ally 0x82 (wounded), player 0x01.
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_ally_off = fe7::GetUnit(0x82).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_ally_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    fe7::Unit ua{};
+    fe7::Unit ually{};
+    fe7::Unit ub{};
+    std::memcpy(&ua, rec.ewram.data() + unit_a_off, sizeof(ua));
+    std::memcpy(&ually, rec.ewram.data() + unit_ally_off, sizeof(ually));
+    std::memcpy(&ub, rec.ewram.data() + unit_b_off, sizeof(ub));
+
+    ua.id = static_cast<int8_t>(0x81);
+    ua.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.flags = (NextXorshift(rng) % 4u == 0u) ? fe7::kUnitFlagInBallista : 0u;
+    ua.ai_config = 0u;
+    ua.ai_a = 0u;
+    ua.ai_a_pc = 0u;
+    ua.unk_46 = static_cast<uint8_t>(NextXorshift(rng) % 3u);
+    ua.wexp[4] = 251u;  // S-rank staves
+    ua.items[0] = (NextXorshift(rng) & 1u) ? 0x1E4Au : 0x1E4Du;  // Heal/Physic
+    ua.items[1] = 0x1E4Eu;                                       // Fortify
+    ua.items[2] = 0x2E01u;                                       // Iron Sword
+
+    ually.id = static_cast<int8_t>(0x82);
+    ually.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ually.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ually.flags = 0u;
+    ually.max_hp = 20;
+    ually.hp = static_cast<int8_t>(5 + (NextXorshift(rng) % 15u));
+    ually.ai_flags = (NextXorshift(rng) & 1u) ? 1u : 0u;
+
+    ub.id = 0x01;
+    ub.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.flags = 0u;
+
+    std::memcpy(rec.ewram.data() + unit_a_off, &ua, sizeof(ua));
+    std::memcpy(rec.ewram.data() + unit_ally_off, &ually, sizeof(ually));
+    std::memcpy(rec.ewram.data() + unit_b_off, &ub, sizeof(ub));
+
+    auto place_unit = [&](int x, int y, uint8_t uid) {
+      const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                             static_cast<uint32_t>(x + 4);
+      rec.ewram[unit_tiles + utoff] = uid;
+    };
+    place_unit(ua.x, ua.y, 0x81u);
+    place_unit(ually.x, ually.y, 0x82u);
+    place_unit(ub.x, ub.y, 0x01u);
+
+    const uint32_t ua_addr = fe7::GetUnit(0x81).addr;
+    const uint32_t ub_addr = fe7::GetUnit(0x01).addr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+
+    // Seed RNG state and AI state/decision.
+    const uint16_t rng0 = static_cast<uint16_t>(NextXorshift(rng));
+    const uint16_t rng1 = static_cast<uint16_t>(NextXorshift(rng));
+    const uint16_t rng2 = static_cast<uint16_t>(NextXorshift(rng));
+    std::memcpy(rec.iwram.data() + 0u + 0u, &rng0, 2);
+    std::memcpy(rec.iwram.data() + 0u + 2u, &rng1, 2);
+    std::memcpy(rec.iwram.data() + 0u + 4u, &rng2, 2);
+
+    const uint32_t ai_state_off = fe7::kAiStateAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + ai_state_off, 0, 0x90u);
+    rec.ewram[ai_state_off + 0x7Bu] = (NextXorshift(rng) % 4u == 0u) ? 4u : 0u;
+    rec.ewram[ai_state_off + 0x7Cu] = (NextXorshift(rng) & 1u) ? 80u : 0u;
+    rec.ewram[ai_state_off + 0x86u] = 0x01u;
+    std::memset(rec.ewram.data() + (fe7::kAiDecisionAddr - 0x02000000u), 0,
+                sizeof(fe7::AiDecision));
+
+    const uint8_t pid_a =
+        fe7::gMem.rom[(ua.pinfo.addr - 0x08000000u) + offsetof(fe7::PInfo, id)];
+    const uint8_t pid_b =
+        fe7::gMem.rom[(ub.pinfo.addr - 0x08000000u) + offsetof(fe7::PInfo, id)];
+    rec.ewram[fe7::kAiTargetPidScratchAddr - 0x02000000u] =
+        (NextXorshift(rng) & 1u) ? pid_b : pid_a;
+
+    // Default coord table for MoveOrAttackInRegion.
+    rec.ewram[kCoordsOff + 0u] =
+        static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    rec.ewram[kCoordsOff + 1u] =
+        static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+
+    // Default params buffer.
+    rec.ewram[kParamsOff + 0u] = static_cast<uint8_t>(NextXorshift(rng) % 8u);
+    rec.ewram[kParamsOff + 1u] = static_cast<uint8_t>(NextXorshift(rng) % 8u);
+    rec.ewram[kParamsOff + 2u] = static_cast<uint8_t>(NextXorshift(rng) % 8u);
+    rec.ewram[kParamsOff + 3u] = static_cast<uint8_t>(NextXorshift(rng) % 8u);
+
+    switch (gba_addr) {
+      case fe7::kAddrAiTryAttackFromPos:
+      case fe7::kAddrAiIsTileOccupiedByEnemy:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrAiScriptActionCountEnemiesInRange:
+        rec.ewram[kParamsOff + 0u] = 16u;
+        rec.ewram[kParamsOff + 1u] =
+            static_cast<uint8_t>(NextXorshift(rng) & 1u);
+        rec.ewram[kParamsOff + 2u] =
+            static_cast<uint8_t>(NextXorshift(rng) & 1u);
+        rec.regs[0] = params_addr;
+        break;
+      case fe7::kAddrAiScriptActionMoveOrAttackInRegion:
+        std::memcpy(rec.ewram.data() + kParamsOff, &coords_addr, 4);
+        rec.ewram[kParamsOff + 4u] = 16u;
+        rec.ewram[kParamsOff + 5u] =
+            static_cast<uint8_t>(NextXorshift(rng) & 1u);
+        rec.regs[0] = params_addr;
+        break;
+      case fe7::kAddrAiGetNextPatrolWaypoint:
+        rec.regs[0] = scratch_addr;
+        break;
+      case fe7::kAddrAiScriptActionTalk:
+        rec.ewram[kParamsOff + 0u] = pid_a;
+        rec.ewram[kParamsOff + 1u] = pid_b;
+        rec.regs[0] = params_addr;
+        break;
+      case fe7::kAddrAiIsUnitMatchingTargetPid:
+      case fe7::kAddrAiIsUnitMatchingCachedUid:
+      case fe7::kAddrAiIsUnitInDirectionOfCachedTarget:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? ub_addr : ua_addr;
+        break;
+      case fe7::kAddrAiScriptActionProbePidTarget:
+        rec.ewram[kParamsOff + 0u] = (NextXorshift(rng) & 1u) ? pid_b : 0xFEu;
+        rec.regs[0] = params_addr;
+        break;
+      case fe7::kAddrAiScriptActionStaffOrAttack:
+      case fe7::kAddrAiScriptActionLootOrAttack:
+        rec.ewram[kParamsOff + 0u] =
+            static_cast<uint8_t>(NextXorshift(rng) % 101u);
+        rec.ewram[kParamsOff + 1u] =
+            static_cast<uint8_t>(NextXorshift(rng) % 101u);
+        rec.regs[0] = params_addr;
+        break;
+      case fe7::kAddrAiScriptActionMoveToCoord:
+        rec.ewram[kParamsOff + 0u] =
+            static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+        rec.ewram[kParamsOff + 1u] =
+            static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+        rec.regs[0] = params_addr;
+        break;
+      case fe7::kAddrAiGetStaffActionIndex: {
+        static constexpr uint16_t kItems[4] = {0x1E4Au, 0x1E4Du, 0x1E4Eu,
+                                               0x2E01u};
+        rec.regs[0] = kItems[NextXorshift(rng) % 4u];
+        break;
+      }
+      case fe7::kAddrAiTrySpecialAction:
+        rec.regs[0] = fe7::kAddrAiIsUnitEnemy | 1u;
+        break;
+      case fe7::kAddrAiFindBestAdjacentStaffPos:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[1] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[2] = scratch_addr;
+        break;
+      case fe7::kAddrAiTryHealStaff:
+      case fe7::kAddrAiTryPhysicStaff:
+        rec.regs[0] = 0u;
+        rec.regs[1] =
+            (NextXorshift(rng) & 1u) ? (fe7::kAddrAiIsUnitEnemy | 1u) : 0u;
+        break;
+      case fe7::kAddrAiTryFortifyStaff:
+        rec.regs[0] = 1u;
+        break;
+      default:
+        rec.regs[0] = params_addr;
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+std::vector<fe7::TraceRecord> MakeAiCombatTraces(uint32_t gba_addr,
+                                                 size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x0C0BA733u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x15000u;
+    constexpr uint32_t kScratchOff = 0x16000u;
+    const uint32_t scratch_addr = 0x02000000u + kScratchOff;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x01u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    const uint32_t rows = kH + 4u;
+    const uint32_t stride = kW + 2u;
+    const uint32_t unit_rows = kH + 8u;
+    const uint32_t unit_stride = kW + 8u;
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    const uint32_t unit_tiles = kUnitMapBufOff + unit_rows * 4u;
+    const uint32_t mov_tiles = kMovMapBufOff + rows * 4u;
+    const uint32_t rng_tiles = kRngMapBufOff + rows * 4u;
+    const uint32_t other_tiles = kOtherMapBufOff + rows * 4u;
+
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        const uint32_t toff = static_cast<uint32_t>(y + 2) * stride +
+                              static_cast<uint32_t>(x + 1);
+        const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                               static_cast<uint32_t>(x + 4);
+        rec.ewram[terrain_tiles + toff] =
+            (NextXorshift(rng) % 6u == 0u)
+                ? 0x0Au
+                : static_cast<uint8_t>(1u + (NextXorshift(rng) % 2u));
+        rec.ewram[mov_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 6u)
+                : 0xFFu;
+        rec.ewram[rng_tiles + toff] = (NextXorshift(rng) & 1u) ? 1u : 0u;
+        rec.ewram[other_tiles + toff] =
+            static_cast<uint8_t>(NextXorshift(rng) & 0x3Fu);
+        rec.ewram[unit_tiles + utoff] = 0u;
+      }
+    }
+
+    // Clear trap array so GetTrapAt / GetBallistaItemAt terminate cleanly.
+    std::memset(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), 0,
+                65u * sizeof(fe7::Trap));
+
+    // Populate enemy active 0x81 and player target 0x01.
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    fe7::Unit ua{};
+    fe7::Unit ub{};
+    std::memcpy(&ua, rec.ewram.data() + unit_a_off, sizeof(ua));
+    std::memcpy(&ub, rec.ewram.data() + unit_b_off, sizeof(ub));
+
+    ua.id = static_cast<int8_t>(0x81);
+    ua.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.flags = 0u;
+    ua.ai_config = (NextXorshift(rng) % 4u == 0u) ? 0x2000u : 0u;
+    ua.wexp[0] = 251u;
+    ua.items[0] = 0x2E01u;                                  // Iron Sword
+    ua.items[1] = (NextXorshift(rng) & 1u) ? 0x036Bu : 0u;  // Vulnerary
+    ua.items[2] = 0u;
+
+    ub.id = 0x01;
+    ub.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.flags = 0u;
+    ub.items[0] = 0x2E01u;
+    ub.items[1] = 0x036Bu;  // Stealable Vulnerary
+    ub.items[2] = 0u;
+
+    std::memcpy(rec.ewram.data() + unit_a_off, &ua, sizeof(ua));
+    std::memcpy(rec.ewram.data() + unit_b_off, &ub, sizeof(ub));
+
+    auto place_unit = [&](int x, int y, uint8_t uid) {
+      const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                             static_cast<uint32_t>(x + 4);
+      rec.ewram[unit_tiles + utoff] = uid;
+    };
+    place_unit(ua.x, ua.y, 0x81u);
+    place_unit(ub.x, ub.y, 0x01u);
+
+    const uint32_t ua_addr = fe7::GetUnit(0x81).addr;
+    const uint32_t ub_addr = fe7::GetUnit(0x01).addr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+
+    // Seed PlayStatus chapter = 1, faction = 0x80 (enemy), turn = 2.
+    const uint32_t ps_off = fe7::kPlayStatusAddr - 0x02000000u;
+    rec.ewram[ps_off + 0x0Eu] = 1u;
+    rec.ewram[ps_off + 0x0Fu] = 0x80u;
+    rec.ewram[ps_off + 0x10u] = 2u;
+
+    // Seed AI state and decision.
+    const uint32_t ai_state_off = fe7::kAiStateAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + ai_state_off, 0, 0x90u);
+    rec.ewram[ai_state_off + 0x7Bu] = (NextXorshift(rng) % 4u == 0u) ? 2u : 0u;
+
+    fe7::AiDecision dec{};
+    dec.action_id = (NextXorshift(rng) % 4u == 0u) ? 2u : 0u;
+    dec.x_move = static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    dec.y_move = static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    std::memcpy(rec.ewram.data() + (fe7::kAiDecisionAddr - 0x02000000u), &dec,
+                sizeof(dec));
+
+    // Populate AiCombatSimulationSt at scratch_addr.
+    fe7::AiCombatSimulationSt sim{};
+    sim.x_move = static_cast<uint8_t>(ua.x);
+    sim.y_move = static_cast<uint8_t>(ua.y);
+    sim.target_id = 0x01u;
+    sim.item_slot = 0u;
+    sim.score = 0u;
+    std::memcpy(rec.ewram.data() + kScratchOff, &sim, sizeof(sim));
+
+    switch (gba_addr) {
+      case fe7::kAddrAiPerformAttack:
+      case fe7::kAddrAiPerformAttackInCurrentMovement:
+        rec.regs[0] = fe7::kAddrAiIsUnitEnemy | 1u;
+        break;
+      case fe7::kAddrAiFillTargetWeaponRangeMap:
+        rec.regs[0] = ub_addr;
+        rec.regs[1] = 0x2E01u;
+        break;
+      case fe7::kAddrAiMakeRangeMapForUnitAndMov:
+        rec.regs[0] = ua_addr;
+        rec.regs[1] = 3u + (NextXorshift(rng) % 3u);
+        rec.regs[2] = 0x2E01u;
+        break;
+      case fe7::kAddrAiSimulateBallistaAttack:
+        rec.regs[0] = fe7::kAddrAiIsUnitEnemy | 1u;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiGetStealPositionScore:
+      case fe7::kAddrAiTryStealFromPos:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[1] = 1u + (NextXorshift(rng) % 6u);
+        break;
+      case fe7::kAddrAiSimulateBestBallistaBattleAgainstTarget:
+        rec.regs[0] = scratch_addr;
+        rec.regs[1] = 0x35u;
+        break;
+      case fe7::kAddrAiGetCombatPositionScore:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[1] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[2] = scratch_addr;
+        break;
+      case fe7::kAddrAiSimulateBestBattleAgainstTarget:
+      case fe7::kAddrAiIsCombatSimInvalid:
+      case fe7::kAddrAiSimulateBattleAndComputeScore:
+      case fe7::kAddrAiFindBestRecoveryTile:
+        rec.regs[0] = scratch_addr;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+std::vector<fe7::TraceRecord> MakeAiCpTraces(uint32_t gba_addr, size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x0C90A104u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x15000u;
+    constexpr uint32_t kFogMapBufOff = 0x15800u;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kFogMapBufOff, fe7::kMapFogAddr, kW, kH,
+                           0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    // Clear trap array so GetTrapAt / GetBallistaItemAt terminate cleanly.
+    std::memset(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), 0,
+                65u * sizeof(fe7::Trap));
+
+    // Initialize clean Proc pool and a synthetic parent Proc at slot 0.
+    constexpr uint32_t kProcPoolCount = 64u;
+    const uint32_t proc_pool_off = fe7::kProcsAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + proc_pool_off, 0,
+                kProcPoolCount * sizeof(fe7::Proc));
+    const uint32_t proc_addr = fe7::kProcsAddr;
+    fe7::Proc parent_proc{};
+    parent_proc.proc_script =
+        fe7::GbaPtr<const fe7::ProcScr>(fe7::kAiMapBgmProcScrAddr);
+    parent_proc.proc_script_pc =
+        fe7::GbaPtr<const fe7::ProcScr>(fe7::kAiMapBgmProcScrAddr);
+    std::memcpy(rec.ewram.data() + proc_pool_off, &parent_proc,
+                sizeof(parent_proc));
+    // Set proc_alloc_head to point to proc slot 1..63.
+    const uint32_t alloc_table_addr = fe7::kProcAllocListAddr;
+    const uint32_t alloc_table_off = alloc_table_addr - 0x02000000u;
+    for (uint32_t k = 0; k < kProcPoolCount; ++k) {
+      const uint32_t p = fe7::kProcsAddr + k * sizeof(fe7::Proc);
+      std::memcpy(rec.ewram.data() + alloc_table_off + k * 4u, &p, 4);
+    }
+    const uint32_t head_ptr = alloc_table_addr + 4u;
+    std::memcpy(rec.ewram.data() + (fe7::kProcAllocHeadAddr - 0x02000000u),
+                &head_ptr, 4);
+    // Point proc+0x2C to CpPerformWaitDone | 1u and proc+0x30 to 0..6.
+    const uint32_t wait_done_fn = fe7::kAddrCpPerformWaitDone | 1u;
+    std::memcpy(rec.ewram.data() + proc_pool_off + 0x2Cu, &wait_done_fn, 4);
+    rec.ewram[proc_pool_off + 0x30u] = static_cast<uint8_t>(i % 7u);
+    rec.ewram[proc_pool_off + 0x31u] = 0u;
+
+    // Populate enemy active 0x81 and player 0x01.
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    fe7::Unit ua{};
+    fe7::Unit ub{};
+    std::memcpy(&ua, rec.ewram.data() + unit_a_off, sizeof(ua));
+    std::memcpy(&ub, rec.ewram.data() + unit_b_off, sizeof(ub));
+    ua.id = static_cast<int8_t>(0x81);
+    ua.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.flags = 0u;
+    ua.ai_a = 0u;
+    ua.ai_a_pc = 0u;
+    ua.ai_b = 0u;
+    ua.ai_b_pc = 0u;
+    ua.ai_config = 0u;
+    ua.wexp[0] = 251u;
+    ua.items[0] = 0x2E01u;
+    ua.items[1] = 0u;
+    ub.id = 0x01;
+    ub.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.flags = 0u;
+    ub.items[0] = 0x2E01u;
+    ub.items[1] = 0u;
+    std::memcpy(rec.ewram.data() + unit_a_off, &ua, sizeof(ua));
+    std::memcpy(rec.ewram.data() + unit_b_off, &ub, sizeof(ub));
+
+    const uint32_t ua_addr = fe7::GetUnit(0x81).addr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+
+    // Seed PlayStatus: vision = 1, chapter = 1, faction = 0x80 (enemy).
+    const uint32_t ps_off = fe7::kPlayStatusAddr - 0x02000000u;
+    rec.ewram[ps_off + 0x0Du] = 1u;
+    rec.ewram[ps_off + 0x0Eu] = 1u;
+    rec.ewram[ps_off + 0x0Fu] = 0x80u;
+
+    // Seed AI state and decision.
+    const uint32_t ai_state_off = fe7::kAiStateAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + ai_state_off, 0, 0x90u);
+    rec.ewram[ai_state_off + 0x79u] = (NextXorshift(rng) & 1u) ? 4u : 0u;
+    rec.ewram[ai_state_off + 0x7Bu] = (NextXorshift(rng) % 3u == 0u) ? 4u : 0u;
+
+    fe7::AiDecision dec{};
+    static constexpr uint8_t kSafeDispatchActs[8] = {0u, 4u, 5u, 6u,
+                                                     7u, 8u, 9u, 10u};
+    static constexpr uint8_t kSafeCursorActs[6] = {0u, 2u, 4u, 6u, 9u, 10u};
+    if (gba_addr == fe7::kAddrCpPerformDispatchAction) {
+      dec.action_id = kSafeDispatchActs[NextXorshift(rng) % 8u];
+    } else if (gba_addr == fe7::kAddrCpPerformTargetCursor) {
+      dec.action_id = kSafeCursorActs[NextXorshift(rng) % 6u];
+    } else {
+      dec.action_id = 0u;
+    }
+    dec.x_move = static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    dec.y_move = static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    dec.unit_target_id = 1u;
+    dec.x_target = 5u;
+    dec.action_performed = (gba_addr == fe7::kAddrCpDecideMain)
+                               ? static_cast<int8_t>(NextXorshift(rng) & 1u)
+                               : 0;
+    std::memcpy(rec.ewram.data() + (fe7::kAiDecisionAddr - 0x02000000u), &dec,
+                sizeof(dec));
+
+    // Clear gActionData.
+    std::memset(rec.ewram.data() + (fe7::kAiActionDataAddr - 0x02000000u), 0,
+                0x20u);
+
+    switch (gba_addr) {
+      case fe7::kAddrStartAiCursorFlash:
+        rec.regs[0] = 32u;
+        rec.regs[1] = 48u;
+        rec.regs[2] = 2u;
+        rec.regs[3] = proc_addr;
+        break;
+      case fe7::kAddrCpPerformCameraWatch:
+      case fe7::kAddrCpPerformEscapeMove:
+      case fe7::kAddrCpPerformActionNop:
+      case fe7::kAddrCpPerformTalk:
+      case fe7::kAddrCpPerformRideBallista:
+      case fe7::kAddrCpPerformExitBallista:
+      case fe7::kAddrCpPerformTargetCursor:
+      case fe7::kAddrCpPerformDispatchAction:
+      case fe7::kAddrCpPerformActionLoop:
+      case fe7::kAddrCpPerformWaitDone:
+      case fe7::kAddrCpPerformWaitEscape:
+      case fe7::kAddrCpPerformWaitSteal:
+        rec.regs[0] = proc_addr;
         break;
       default:
         break;
@@ -2866,6 +3993,30 @@ int main(int argc, char** argv) {
         auto script_traces = MakeAiScriptTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, script_traces, 0,
                                 0xFE700001u, opts);
+        break;
+      }
+      case FuzzMode::kAiOpcodeState: {
+        auto op_traces = MakeAiOpcodeTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, op_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kAiActionState: {
+        auto act_traces = MakeAiActionTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, act_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kAiCombatState: {
+        auto cbt_traces = MakeAiCombatTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, cbt_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kAiCpState: {
+        auto cp_traces = MakeAiCpTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, cp_traces, 0, 0xFE700001u,
+                                opts);
         break;
       }
       case FuzzMode::kTracesOnly:
