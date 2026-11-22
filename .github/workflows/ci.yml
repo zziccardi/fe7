@@ -31,6 +31,9 @@ jobs:
       - name: Check game/ agent coding rules
         run: python3 tools/check_agent_rules.py
 
+      - name: Run Python tool unit tests
+        run: python3 -m unittest discover -s tools -p '*_test.py' -v
+
       - name: Run unit tests (ASan + UBSan + LSan)
         run: bazel test --config=asan //...
 

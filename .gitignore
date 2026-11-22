@@ -14,7 +14,9 @@ compile_commands.json
 .cache/
 .clangd/
 
-# OS / Editor
+# OS / Editor / Python
 .DS_Store
 *.swp
 *~
+__pycache__/
+*.pyc
