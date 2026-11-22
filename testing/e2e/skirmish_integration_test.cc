@@ -72,8 +72,11 @@ constexpr uint32_t kKentSupportInfoAddr = 0x08010220u;
 constexpr uint32_t kJobRankGroup0Addr = 0x08010280u;
 constexpr uint32_t kJobRankGroup1Addr = 0x08010290u;
 constexpr uint32_t kAngelicRobeBonusAddr = 0x080102A0u;
+constexpr uint32_t kScriptATableAddr = 0x08044F00u;
+constexpr uint32_t kScriptA0Addr = 0x08045000u;
 
 // Synthetic EWRAM map buffers (each 0x1000 bytes, well away from unit arrays).
+constexpr uint32_t kEwramBase = 0x02000000u;
 constexpr uint32_t kTerrainBufAddr = 0x02010000u;
 constexpr uint32_t kUnitMapBufAddr = 0x02011000u;
 constexpr uint32_t kMovMapBufAddr = 0x02012000u;
@@ -81,6 +84,17 @@ constexpr uint32_t kRngMapBufAddr = 0x02013000u;
 constexpr uint32_t kOtherMapBufAddr = 0x02014000u;
 constexpr uint32_t kFogMapBufAddr = 0x02015000u;
 constexpr uint32_t kHiddenMapBufAddr = 0x02016000u;
+
+// Synthetic EWRAM scratch slots (used internally by fixture helpers).
+constexpr uint32_t kScratchSupportBonusesAddr = 0x02018100u;
+constexpr uint32_t kScratchBestPosAddr = 0x02018200u;
+constexpr uint32_t kScratchCombatSimAddr = 0x02018220u;
+
+// Synthetic roster unit IDs.
+constexpr int kUnitIdLyn = 1;
+constexpr int kUnitIdKent = 2;
+constexpr int kUnitIdBrigandA = 0x81;
+constexpr int kUnitIdBrigandB = 0x82;
 
 // Synthetic character / class / item IDs.
 constexpr uint8_t kPidLyn = 1;
@@ -97,14 +111,44 @@ constexpr uint8_t kIidIronLance = 2;
 constexpr uint8_t kIidIronAxe = 3;
 constexpr uint8_t kIidSteelAxe = 4;
 constexpr uint8_t kIidAngelicRobe = 5;
+constexpr uint8_t kIidHealStaff = 0x4Au;
+constexpr uint8_t kIidVulnerary = 0x6Bu;
 
 constexpr int kMapW = 8;
 constexpr int kMapH = 8;
 
-// Terrain IDs used on the synthetic 8x8 skirmish map.
+// Terrain IDs and movement sentinels used on the synthetic 8x8 skirmish map.
 constexpr uint8_t kTerrainWall = 0;
 constexpr uint8_t kTerrainPlains = 1;
 constexpr uint8_t kTerrainForest = 2;
+constexpr uint8_t kMoveCostUnreachable = 0xFFu;
+
+// PlayStatus / AiState / Proc field offsets (used by fixture helpers).
+constexpr uint32_t kPlayStatusVisionOffset = 0x0Du;
+constexpr uint32_t kPlayStatusFactionOffset = 0x0Fu;
+constexpr uint32_t kPlayStatusTurnOffset = 0x10u;
+constexpr uint32_t kAiStateDecideStepOffset = 0x79u;
+constexpr uint32_t kAiStateDangerFilledOffset = 0x7Au;
+constexpr uint32_t kAiStateRecoveryModeOffset = 0x7Bu;
+constexpr uint32_t kAiStateHealThresholdOffset = 0x7Cu;
+constexpr uint32_t kAiStateFlagsOffset = 0x7Du;
+constexpr uint32_t kProcPayloadCallbackOffset = 0x2Cu;
+
+// AI action IDs, recovery modes, and script opcodes.
+constexpr uint8_t kAiActionWait = 0u;
+constexpr uint8_t kAiActionAttack = 1u;
+constexpr uint8_t kAiActionStaff = 5u;
+constexpr uint8_t kAiActionUseItem = 6u;
+constexpr uint8_t kAiRecoveryModeDefault = 0u;
+constexpr uint8_t kAiRecoveryModeStationary = 2u;
+constexpr uint8_t kAiScriptOpGoto = 0x03u;
+constexpr uint8_t kAiScriptOpAttack = 0x05u;
+
+// Deterministic per-test RNG seeds.
+constexpr int kRngSeedMultiTurn = 0x1234;
+constexpr int kRngSeedWeaponBreak = 0x5678;
+constexpr int kRngSeedTacticalFog = 0xC0FFEE;
+constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
 
 struct WeaponTriangleEntry {
   int8_t attacker_kind;
@@ -446,12 +490,12 @@ class SkirmishIntegrationTest : public ::testing::Test {
 
   void InitPlayState() {
     // Turn 1, Blue Phase.
-    *GbaPtr<uint8_t>(kPhasePlayStatusAddr + 0x0Fu) = kFactionBlue;
-    *GbaPtr<uint16_t>(kPhasePlayStatusAddr + 0x10u) = 1u;
+    SetPhaseFaction(kFactionBlue);
+    SetTurnNumber(1);
     // Mark danger map already filled so AiRefreshDangerMap doesn't wipe custom
     // values unless requested.
-    *GbaPtr<uint8_t>(kAiStateAddr + 0x7Au) = 1u;
-    *GbaPtr<uint8_t>(kAiStateAddr + 0x7Du) = 0u;
+    SetDangerMapFilled(true);
+    *GbaPtr<uint8_t>(kAiStateAddr + kAiStateFlagsOffset) = 0u;
     *GbaPtr<uint32_t>(kAiScoreCoeffPtrAddr) = kAiCombatScoreCoeffTableAddr;
   }
 
@@ -628,18 +672,231 @@ class SkirmishIntegrationTest : public ::testing::Test {
     }
   }
 
+  // --- Test-only semantic helpers (keep E2E TEST_F bodies hex-free) ---
+
+  static constexpr uint16_t MakeItem(uint8_t iid, uint8_t uses) {
+    return static_cast<uint16_t>((static_cast<uint32_t>(uses) << 8) | iid);
+  }
+
+  static constexpr uint32_t ThumbAddr(uint32_t gba_addr) {
+    return gba_addr | 1u;
+  }
+
+  GbaPtr<Unit> Lyn() const { return GetUnit(kUnitIdLyn); }
+  GbaPtr<Unit> Kent() const { return GetUnit(kUnitIdKent); }
+  GbaPtr<Unit> BrigandA() const { return GetUnit(kUnitIdBrigandA); }
+  GbaPtr<Unit> BrigandB() const { return GetUnit(kUnitIdBrigandB); }
+
+  GbaPtr<GbaPtr<uint8_t>> TerrainMap() const {
+    return *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr);
+  }
+
+  GbaPtr<GbaPtr<uint8_t>> MovementMap() const {
+    return *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapMovementAddr);
+  }
+
+  GbaPtr<GbaPtr<uint8_t>> RangeMap() const {
+    return *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapRangeAddr);
+  }
+
+  GbaPtr<GbaPtr<uint8_t>> FogMap() const {
+    return *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapFogAddr);
+  }
+
+  void SetFogVision(uint8_t vision) {
+    *GbaPtr<uint8_t>(kMapPlayStatusAddr + kPlayStatusVisionOffset) = vision;
+  }
+
+  uint8_t GetPhaseFaction() const {
+    return *GbaPtr<const uint8_t>(kPhasePlayStatusAddr +
+                                  kPlayStatusFactionOffset);
+  }
+
+  void SetPhaseFaction(uint8_t faction) {
+    *GbaPtr<uint8_t>(kPhasePlayStatusAddr + kPlayStatusFactionOffset) = faction;
+  }
+
+  uint16_t GetTurnNumber() const {
+    return *GbaPtr<const uint16_t>(kPhasePlayStatusAddr +
+                                   kPlayStatusTurnOffset);
+  }
+
+  void SetTurnNumber(uint16_t turn) {
+    *GbaPtr<uint16_t>(kPhasePlayStatusAddr + kPlayStatusTurnOffset) = turn;
+  }
+
+  SupportBonuses ComputeSupportBonuses(GbaPtr<const Unit> unit) const {
+    SupportBonuses out{};
+    GetUnitSupportBonuses(unit,
+                          GbaPtr<SupportBonuses>(kScratchSupportBonusesAddr));
+    std::memcpy(&out, ewram_.data() + (kScratchSupportBonusesAddr - kEwramBase),
+                sizeof(out));
+    return out;
+  }
+
+  void SetActiveAiUnit(GbaPtr<Unit> unit) {
+    *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = unit;
+    *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(unit->id);
+  }
+
+  bool IsDangerMapFilled() const {
+    return *GbaPtr<const uint8_t>(kAiStateAddr + kAiStateDangerFilledOffset) !=
+           0u;
+  }
+
+  void SetDangerMapFilled(bool filled) {
+    *GbaPtr<uint8_t>(kAiStateAddr + kAiStateDangerFilledOffset) =
+        filled ? 1u : 0u;
+  }
+
+  void ResetAiDecideState(uint8_t recovery_mode = kAiRecoveryModeDefault) {
+    *GbaPtr<uint8_t>(kAiStateAddr + kAiStateDecideStepOffset) = 0u;
+    *GbaPtr<uint8_t>(kAiStateAddr + kAiStateRecoveryModeOffset) = recovery_mode;
+  }
+
+  void SetAiHealThreshold(uint8_t percent) {
+    *GbaPtr<uint8_t>(kAiStateAddr + kAiStateHealThresholdOffset) = percent;
+  }
+
+  bool FindBestAiPosition(AiPos* absl_nonnull out) {
+    GbaPtr<AiPos> scratch(kScratchBestPosAddr);
+    *scratch = {};
+    const bool found = AiFindBestPositionInRange(scratch);
+    *out = *scratch;
+    return found;
+  }
+
+  uint32_t ScoreAiCombat(uint8_t x, uint8_t y, GbaPtr<const Unit> target,
+                         uint16_t item_slot = 0) {
+    GbaPtr<AiCombatSimulationSt> sim_st(kScratchCombatSimAddr);
+    *sim_st = {};
+    sim_st->x_move = x;
+    sim_st->y_move = y;
+    sim_st->target_id = static_cast<uint8_t>(target->id);
+    sim_st->item_slot = item_slot;
+    AiComputeCombatScore(sim_st);
+    return sim_st->score;
+  }
+
+  uint32_t GetProcDispatchedCallback(GbaPtr<Proc> proc) const {
+    return *GbaPtr<const uint32_t>(proc.addr + kProcPayloadCallbackOffset);
+  }
+
+  // Registers lightweight native shims for the low-level map/sim helpers that
+  // live outside the AI subsystem (`SetWorkingBmMap`, `MapAddInBoundedRange`,
+  // `MapFloodRangeExtend`, `BattleGenerateSimulation`), keeping the entire
+  // enemy turn 100% native with zero ARM7TDMI fallback.
+  void RegisterEnemyAiTurnShims() {
+    RegisterNative(kAddrSetWorkingBmMap,
+                   [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                      const uint32_t* absl_nullable) -> uint32_t {
+                     *GbaPtr<uint32_t>(kWorkingMapAddr) = r0;
+                     return 0u;
+                   });
+    RegisterNative(kAddrMapAddInBoundedRange,
+                   [](uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
+                      const uint32_t* absl_nullable) -> uint32_t {
+                     const int x = static_cast<int16_t>(r0);
+                     const int y = static_cast<int16_t>(r1);
+                     const int min_r = static_cast<int16_t>(r2);
+                     const int max_r = static_cast<int16_t>(r3);
+                     MapAddInRange(x, y, max_r, 1);
+                     if (min_r > 1) {
+                       MapAddInRange(x, y, min_r - 1, -1);
+                     }
+                     return 0u;
+                   });
+    RegisterNative(kAddrMapClearOther, StubNoOpZero);
+    RegisterNative(kAddrMapFloodRangeExtend, StubNoOpZero);
+    RegisterNative(kAddrRemoveUnitFromBallista, StubNoOpZero);
+    RegisterNative(kAddrBattleGenerateSimulation,
+                   [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                      const uint32_t* absl_nullable) -> uint32_t {
+                     GbaPtr<BattleUnit> actor(kBattleActorAddr);
+                     GbaPtr<BattleUnit> target(kBattleTargetAddr);
+                     InitBattleUnit(actor, GbaPtr<const Unit>(r0));
+                     InitBattleUnit(target, GbaPtr<const Unit>(r1));
+                     ComputeBattleUnitStats(actor, target);
+                     ComputeBattleUnitStats(target, actor);
+                     return 0u;
+                   });
+  }
+
+  // Populates synthetic ROM tables for CpDecide, AI script opcodes, staff
+  // actions, healing items, and cardinal adjacent offsets.
+  void InitEnemyAiTurnRomTables() {
+    WriteRom<uint32_t>(kAiDecideFuncsAddr + 0u,
+                       ThumbAddr(kAddrCpDecideSuspendOrRecover));
+    WriteRom<uint32_t>(kAiDecideFuncsAddr + 4u,
+                       ThumbAddr(kAddrCpDecideScriptA));
+    WriteRom<uint32_t>(kAiDecideFuncsAddr + 8u,
+                       ThumbAddr(kAddrCpDecideScriptB));
+    WriteRom<uint32_t>(kAiDecideFuncsAddr + 12u, 0u);
+
+    // Script A[0]: op Attack (100% chance) -> op Goto 0.
+    WriteRom<uint32_t>(kAiScriptTableAPtrAddr, kScriptATableAddr);
+    WriteRom<uint32_t>(kScriptATableAddr, kScriptA0Addr);
+    AiScriptCmd cmd_attack{};
+    cmd_attack.cmd = kAiScriptOpAttack;
+    cmd_attack.arg1 = 100u;
+    WriteRom(kScriptA0Addr, cmd_attack);
+    AiScriptCmd cmd_goto{};
+    cmd_goto.cmd = kAiScriptOpGoto;
+    cmd_goto.arg3 = 0u;
+    WriteRom(kScriptA0Addr + sizeof(AiScriptCmd), cmd_goto);
+
+    WriteRom<uint32_t>(
+        kAiScriptOpcodeTableAddr + static_cast<uint32_t>(kAiScriptOpGoto) * 4u,
+        ThumbAddr(kAddrAiScriptCmdGoto));
+    WriteRom<uint32_t>(kAiScriptOpcodeTableAddr +
+                           static_cast<uint32_t>(kAiScriptOpAttack) * 4u,
+                       ThumbAddr(kAddrAiScriptCmdAttack));
+
+    // Staff action table entry 0: Heal staff -> AiTryHealStaff.
+    IInfo heal_info{};
+    heal_info.id = kIidHealStaff;
+    heal_info.kind = static_cast<uint8_t>(ItemKind::kStaff);
+    heal_info.attributes = kItemAttrStaff;
+    heal_info.required_wexp = 1;      // E-rank
+    heal_info.encoded_range = 0x11u;  // 1-1 range
+    WriteRom(
+        kIInfoTableAddr + static_cast<uint32_t>(kIidHealStaff) * sizeof(IInfo),
+        heal_info);
+
+    IInfo vuln_info{};
+    vuln_info.id = kIidVulnerary;
+    vuln_info.kind = static_cast<uint8_t>(ItemKind::kItem);
+    WriteRom(
+        kIInfoTableAddr + static_cast<uint32_t>(kIidVulnerary) * sizeof(IInfo),
+        vuln_info);
+
+    WriteRom<uint32_t>(kAiStaffActionTableAddr + 0u, kIidHealStaff);
+    WriteRom<uint32_t>(kAiStaffActionTableAddr + 4u,
+                       ThumbAddr(kAddrAiTryHealStaff));
+    WriteRom<uint32_t>(kAiStaffActionTableAddr + 8u, 0u);
+
+    constexpr int32_t kCardOffsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (int i = 0; i < 4; ++i) {
+      WriteRom<int32_t>(kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u,
+                        kCardOffsets[i][0]);
+      WriteRom<int32_t>(
+          kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u + 4u,
+          kCardOffsets[i][1]);
+    }
+  }
+
   std::vector<uint8_t> ewram_;
   std::vector<uint8_t> iwram_;
   std::vector<uint8_t> rom_;
 };
 
 TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
-  RandInit(0x1234u);
+  RandInit(kRngSeedMultiTurn);
 
-  GbaPtr<Unit> lyn = GetUnit(1);
-  GbaPtr<Unit> kent = GetUnit(2);
-  GbaPtr<Unit> brigand_a = GetUnit(0x81);
-  GbaPtr<Unit> brigand_b = GetUnit(0x82);
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> kent = Kent();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  GbaPtr<Unit> brigand_b = BrigandB();
 
   // --- Turn 1, Player Phase (Blue) ---
   EXPECT_EQ(GetCurrentPhase(), kFactionBlue);
@@ -649,10 +906,9 @@ TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
   // 1. BFS movement flood for Lyn (5 mov): wall at (3,2) is unreachable,
   //    plains tile (2,3) next to Kent & Brigand A is reachable at cost 1.
   MapFloodUnit(GbaPtr<const Unit>(lyn.addr));
-  GbaPtr<GbaPtr<uint8_t>> mov_map =
-      *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapMovementAddr);
-  EXPECT_EQ(mov_map[2][3], 0xFFu);  // Wall tile blocked.
-  EXPECT_LE(mov_map[3][2], 5u);     // (2,3) reachable.
+  GbaPtr<GbaPtr<uint8_t>> mov_map = MovementMap();
+  EXPECT_EQ(mov_map[2][3], kMoveCostUnreachable);  // Wall tile blocked.
+  EXPECT_LE(mov_map[3][2], 5u);                    // (2,3) reachable.
   EXPECT_EQ(mov_map[3][2], 1u);
 
   // Move Lyn to (2, 3), adjacent to Kent (2, 4) and diagonal from Brigand A;
@@ -664,12 +920,8 @@ TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
   SyncUnitMap();
 
   // 2. Verify live Wind+Fire C-support aura from Kent (distance = 2 <= 3).
-  SupportBonuses lyn_bonuses{};
-  constexpr uint32_t kBonusOutAddr = 0x02018100u;
-  GetUnitSupportBonuses(GbaPtr<const Unit>(lyn.addr),
-                        GbaPtr<SupportBonuses>(kBonusOutAddr));
-  std::memcpy(&lyn_bonuses, ewram_.data() + (kBonusOutAddr - 0x02000000u),
-              sizeof(lyn_bonuses));
+  const SupportBonuses lyn_bonuses =
+      ComputeSupportBonuses(GbaPtr<const Unit>(lyn.addr));
   EXPECT_GT(lyn_bonuses.bonus_attack, 0);
   EXPECT_GT(lyn_bonuses.bonus_hit, 0);
 
@@ -707,44 +959,37 @@ TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
   // 5. Brigand B refreshes the AI danger map natively (`AiFillDangerMap`),
   //    runs movement flood, evaluates position & combat score against Kent,
   //    records gAiDecision, and attacks Kent.
-  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_b->id);
-  *GbaPtr<uint32_t>(kAiActiveUnitAddr) = brigand_b.addr;
-  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Au) = 0u;
+  SetActiveAiUnit(brigand_b);
+  SetDangerMapFilled(false);
   AiRefreshDangerMap();
-  EXPECT_EQ(*GbaPtr<uint8_t>(kAiStateAddr + 0x7Au), 1u);
+  EXPECT_TRUE(IsDangerMapFilled());
   EXPECT_EQ(BmMainCheckVictory(), 1);
 
   MapFloodUnit(GbaPtr<const Unit>(brigand_b.addr));
-  GbaPtr<GbaPtr<uint8_t>> rng_map =
-      *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapRangeAddr);
+  GbaPtr<GbaPtr<uint8_t>> rng_map = RangeMap();
   MapFill(rng_map, 0);
   // Tiles adjacent to Kent (4, 4): (5, 4) is forest (bonus def/avo).
   rng_map[4][5] = 1;
   rng_map[3][4] = 1;
 
-  constexpr uint32_t kBestPosAddr = 0x02018200u;
-  GbaPtr<AiPos> best_pos(kBestPosAddr);
-  ASSERT_TRUE(AiFindBestPositionInRange(best_pos));
-  EXPECT_EQ(best_pos->x, 5);
-  EXPECT_EQ(best_pos->y, 4);  // Forest tile (5, 4) preferred.
+  AiPos best_pos{};
+  ASSERT_TRUE(FindBestAiPosition(&best_pos));
+  EXPECT_EQ(best_pos.x, 5);
+  EXPECT_EQ(best_pos.y, 4);  // Forest tile (5, 4) preferred.
 
   // Score Brigand B vs. Kent using simulated battle stats.
   RunCombatExchange(brigand_b, kent, kBattleConfigSimulate);
-  constexpr uint32_t kSimStAddr = 0x02018220u;
-  GbaPtr<AiCombatSimulationSt> sim_st(kSimStAddr);
-  *sim_st = {};
-  sim_st->x_move = static_cast<uint8_t>(best_pos->x);
-  sim_st->y_move = static_cast<uint8_t>(best_pos->y);
-  sim_st->target_id = static_cast<uint8_t>(kent->id);
-  AiComputeCombatScore(sim_st);
-  EXPECT_GT(sim_st->score, 0u);
+  const uint32_t score = ScoreAiCombat(static_cast<uint8_t>(best_pos.x),
+                                       static_cast<uint8_t>(best_pos.y),
+                                       GbaPtr<const Unit>(kent.addr));
+  EXPECT_GT(score, 0u);
 
   AiClearDecision();
-  AiSetDecision(best_pos->x, best_pos->y, /*action_id=*/1,
+  AiSetDecision(best_pos.x, best_pos.y, kAiActionAttack,
                 static_cast<uint8_t>(kent->id), /*item_slot=*/0,
                 static_cast<uint8_t>(kent->x), static_cast<uint8_t>(kent->y));
   GbaPtr<const AiDecision> dec(kAiDecisionAddr);
-  EXPECT_EQ(dec->unit_target_id, 2u);
+  EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(kent->id));
   EXPECT_EQ(dec->action_performed, 1);
 
   // Execute Brigand B's attack on Kent.
@@ -760,11 +1005,11 @@ TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
   const uint8_t sup_before = lyn->supports[0];
 
   EXPECT_EQ(BmMainChangePhase(), 1);
-  EXPECT_EQ(*GbaPtr<uint8_t>(kPhasePlayStatusAddr + 0x0Fu), kFactionGreen);
+  EXPECT_EQ(GetPhaseFaction(), kFactionGreen);
   EXPECT_EQ(BmMainChangePhase(), 1);
-  EXPECT_EQ(*GbaPtr<uint8_t>(kPhasePlayStatusAddr + 0x0Fu), kFactionBlue);
+  EXPECT_EQ(GetPhaseFaction(), kFactionBlue);
   EXPECT_EQ(GetCurrentPhase(), kFactionBlue);
-  EXPECT_EQ(*GbaPtr<uint16_t>(kPhasePlayStatusAddr + 0x10u), 2u);
+  EXPECT_EQ(GetTurnNumber(), 2u);
   // Adjacent Lyn & Kent gained +5 support EXP on Turn 2 Blue phase start.
   EXPECT_EQ(lyn->supports[0], sup_before + 5u);
 
@@ -784,8 +1029,8 @@ TEST_F(SkirmishIntegrationTest, FullMultiTurnCombatLevel) {
 }
 
 TEST_F(SkirmishIntegrationTest, BattleForecastDoesNotMutateUnits) {
-  GbaPtr<Unit> lyn = GetUnit(1);
-  GbaPtr<Unit> brigand_a = GetUnit(0x81);
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> brigand_a = BrigandA();
   lyn->x = 3;
   lyn->y = 3;
   SyncUnitMap();
@@ -807,13 +1052,13 @@ TEST_F(SkirmishIntegrationTest, BattleForecastDoesNotMutateUnits) {
 }
 
 TEST_F(SkirmishIntegrationTest, WeaponBreakAndSupportRankUpAcrossTurns) {
-  RandInit(0x5678u);
-  GbaPtr<Unit> lyn = GetUnit(1);
-  GbaPtr<Unit> kent = GetUnit(2);
-  GbaPtr<Unit> brigand_a = GetUnit(0x81);
+  RandInit(kRngSeedWeaponBreak);
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> kent = Kent();
+  GbaPtr<Unit> brigand_a = BrigandA();
 
   // Give Lyn a 1-use Iron Sword so it breaks on her first strike.
-  lyn->items[0] = static_cast<uint16_t>((1u << 8) | kIidIronSword);
+  lyn->items[0] = MakeItem(kIidIronSword, 1);
   lyn->x = 3;
   lyn->y = 3;
   SyncUnitMap();
@@ -825,7 +1070,7 @@ TEST_F(SkirmishIntegrationTest, WeaponBreakAndSupportRankUpAcrossTurns) {
 
   // Advance to Turn 2 (FE7 skips support EXP on Turn 1) and place Lyn & Kent
   // adjacent at 155 support EXP (5 shy of B-support threshold 160).
-  *GbaPtr<uint16_t>(kPhasePlayStatusAddr + 0x10u) = 2u;
+  SetTurnNumber(2);
   lyn->supports[0] = 155;
   kent->supports[0] = 155;
   lyn->x = 2;
@@ -846,21 +1091,21 @@ TEST_F(SkirmishIntegrationTest, WeaponBreakAndSupportRankUpAcrossTurns) {
 }
 
 TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
-  RandInit(0xC0FFEEu);
-  GbaPtr<Unit> lyn = GetUnit(1);
-  GbaPtr<Unit> kent = GetUnit(2);
-  GbaPtr<Unit> brigand_a = GetUnit(0x81);
-  GbaPtr<Unit> brigand_b = GetUnit(0x82);
+  RandInit(kRngSeedTacticalFog);
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> kent = Kent();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  GbaPtr<Unit> brigand_b = BrigandB();
 
   // --- 1. Traps, Light Rune & Fog of War (game/map/trap) ---
   // Enable Fog of War (vision = 3) during Blue Phase.
-  *GbaPtr<uint8_t>(kMapPlayStatusAddr + 0x0Du) = 3u;
-  *GbaPtr<uint8_t>(kMapPlayStatusAddr + 0x0Fu) = kFactionBlue;
+  SetFogVision(3);
+  SetPhaseFaction(kFactionBlue);
 
   GbaPtr<Trap> rune = AddLightRune(2, 2);
   ASSERT_TRUE(static_cast<bool>(rune));
   ApplyLightRuneTerrain();
-  EXPECT_EQ((*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr))[2][2],
+  EXPECT_EQ(TerrainMap()[2][2],
             kTerrainWall);  // Light Rune sets tile impassable (0)
 
   GbaPtr<Trap> fire = AddFireTrap(4, 3, /*turn_delay=*/1, /*interval=*/2);
@@ -868,7 +1113,7 @@ TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
   EXPECT_EQ(GetTrapAt(4, 3).addr, fire.addr);
 
   RefreshEntityMaps();
-  GbaPtr<GbaPtr<uint8_t>> fog = *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapFogAddr);
+  GbaPtr<GbaPtr<uint8_t>> fog = FogMap();
   EXPECT_GT(fog[lyn->y][lyn->x], 0u);  // Blue unit illuminates its own tile
   EXPECT_EQ(fog[7][7], 0u);            // Far corner remains shrouded
 
@@ -877,16 +1122,16 @@ TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
   ResetExpiredDamagingTraps();
   RemoveTrap(rune);
   EXPECT_FALSE(static_cast<bool>(GetTrapAt(2, 2)));
-  (*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr))[2][2] = kTerrainPlains;
+  TerrainMap()[2][2] = kTerrainPlains;
 
   // Disable fog for the action/AI portion.
-  *GbaPtr<uint8_t>(kMapPlayStatusAddr + 0x0Du) = 0u;
+  SetFogVision(0);
   RefreshEntityMaps();
 
   // --- 2. Unit Actions, Stat Boosters, Autolevel & Rescue/Drop ---
   // Give Lyn an Angelic Robe (+7 HP) in slot 1 and apply it.
   const int8_t lyn_max_hp_before = lyn->max_hp;
-  lyn->items[1] = static_cast<uint16_t>((1u << 8) | kIidAngelicRobe);
+  lyn->items[1] = MakeItem(kIidAngelicRobe, 1);
   EXPECT_EQ(FindUnitItemSlot(GbaPtr<const Unit>(lyn.addr), kIidAngelicRobe), 1);
   ApplyItemStatBoost(lyn, 1);
   EXPECT_EQ(lyn->max_hp, lyn_max_hp_before + 7);
@@ -913,7 +1158,7 @@ TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
 
   // --- 3. Top-Level Enemy AI (Recovery, Threat Auto-Equip, Nearby, Move) ---
   // Switch to Red Phase and wound Brigand A below 50% HP so it enters recovery.
-  *GbaPtr<uint8_t>(kAiPlayStatusAddr + 0x0Fu) = kFactionRed;
+  SetPhaseFaction(kFactionRed);
   brigand_a->hp = 5;
   brigand_b->hp = brigand_b->max_hp;
   AiUpdateFactionRecovery();
@@ -924,17 +1169,16 @@ TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
   // within melee threat of Kent; AiEquipBestItem should swap Steel Axe to 0.
   brigand_b->x = 3;
   brigand_b->y = 4;
-  brigand_b->items[0] = static_cast<uint16_t>((45u << 8) | kIidIronAxe);
-  brigand_b->items[1] = static_cast<uint16_t>((30u << 8) | kIidSteelAxe);
+  brigand_b->items[0] = MakeItem(kIidIronAxe, 45);
+  brigand_b->items[1] = MakeItem(kIidSteelAxe, 30);
   SyncUnitMap();
-  *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = brigand_b;
-  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_b->id);
+  SetActiveAiUnit(brigand_b);
 
   GbaPtr<AiDecision> dec(kAiDecisionAddr);
   AiClearDecision();
   dec->x_move = 2;
   dec->y_move = 4;
-  dec->action_id = 0u;
+  dec->action_id = kAiActionWait;
 
   EXPECT_TRUE(AiCanEquipBestItem());
   AiEquipBestItem();
@@ -956,127 +1200,33 @@ TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
 }
 
 TEST_F(SkirmishIntegrationTest, FullEnemyAiTurnDecisionAndExecution) {
-  RandInit(0xA1E2E01u);
+  RandInit(kRngSeedEnemyAiTurn);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
 
-  // Register lightweight native shims for the 4 low-level map/sim helpers that
-  // live outside the AI subsystem (`SetWorkingBmMap`, `MapAddInBoundedRange`,
-  // `MapFloodRangeExtend`, `BattleGenerateSimulation`), keeping the entire
-  // enemy turn 100% native with zero ARM7TDMI fallback.
-  RegisterNative(kAddrSetWorkingBmMap,
-                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
-                    const uint32_t* absl_nullable) -> uint32_t {
-                   *GbaPtr<uint32_t>(kWorkingMapAddr) = r0;
-                   return 0u;
-                 });
-  RegisterNative(kAddrMapAddInBoundedRange,
-                 [](uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
-                    const uint32_t* absl_nullable) -> uint32_t {
-                   const int x = static_cast<int16_t>(r0);
-                   const int y = static_cast<int16_t>(r1);
-                   const int min_r = static_cast<int16_t>(r2);
-                   const int max_r = static_cast<int16_t>(r3);
-                   MapAddInRange(x, y, max_r, 1);
-                   if (min_r > 1) {
-                     MapAddInRange(x, y, min_r - 1, -1);
-                   }
-                   return 0u;
-                 });
-  RegisterNative(kAddrMapClearOther, StubNoOpZero);
-  RegisterNative(kAddrMapFloodRangeExtend, StubNoOpZero);
-  RegisterNative(kAddrRemoveUnitFromBallista, StubNoOpZero);
-  RegisterNative(kAddrBattleGenerateSimulation,
-                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
-                    const uint32_t* absl_nullable) -> uint32_t {
-                   GbaPtr<BattleUnit> actor(kBattleActorAddr);
-                   GbaPtr<BattleUnit> target(kBattleTargetAddr);
-                   InitBattleUnit(actor, GbaPtr<const Unit>(r0));
-                   InitBattleUnit(target, GbaPtr<const Unit>(r1));
-                   ComputeBattleUnitStats(actor, target);
-                   ComputeBattleUnitStats(target, actor);
-                   return 0u;
-                 });
-
-  // Populate synthetic ROM tables for CpDecide, AI script opcodes, staff
-  // actions, and cardinal adjacent offsets.
-  WriteRom<uint32_t>(kAiDecideFuncsAddr + 0u,
-                     kAddrCpDecideSuspendOrRecover | 1u);
-  WriteRom<uint32_t>(kAiDecideFuncsAddr + 4u, kAddrCpDecideScriptA | 1u);
-  WriteRom<uint32_t>(kAiDecideFuncsAddr + 8u, kAddrCpDecideScriptB | 1u);
-  WriteRom<uint32_t>(kAiDecideFuncsAddr + 12u, 0u);
-
-  // Script A[0]: op 0x05 (AiScriptCmdAttack, 100% chance) -> op 0x03 (Goto 0).
-  constexpr uint32_t kScriptATableAddr = 0x08044F00u;
-  constexpr uint32_t kScriptA0Addr = 0x08045000u;
-  WriteRom<uint32_t>(kAiScriptTableAPtrAddr, kScriptATableAddr);
-  WriteRom<uint32_t>(kScriptATableAddr, kScriptA0Addr);
-  AiScriptCmd cmd_attack{};
-  cmd_attack.cmd = 0x05u;
-  cmd_attack.arg1 = 100u;
-  WriteRom(kScriptA0Addr, cmd_attack);
-  AiScriptCmd cmd_goto{};
-  cmd_goto.cmd = 0x03u;
-  cmd_goto.arg3 = 0u;
-  WriteRom(kScriptA0Addr + sizeof(AiScriptCmd), cmd_goto);
-
-  WriteRom<uint32_t>(kAiScriptOpcodeTableAddr + 0x03u * 4u,
-                     kAddrAiScriptCmdGoto | 1u);
-  WriteRom<uint32_t>(kAiScriptOpcodeTableAddr + 0x05u * 4u,
-                     kAddrAiScriptCmdAttack | 1u);
-
-  // Staff action table entry 0: Heal staff (IID 0x4A) -> AiTryHealStaff.
-  constexpr uint8_t kIidHealStaff = 0x4Au;
-  constexpr uint8_t kIidVulnerary = 0x6Bu;
-  IInfo heal_info{};
-  heal_info.id = kIidHealStaff;
-  heal_info.kind = 4;               // Staff
-  heal_info.attributes = 0x04u;     // Staff attribute
-  heal_info.required_wexp = 1;      // E-rank
-  heal_info.encoded_range = 0x11u;  // 1-1 range
-  WriteRom(kIInfoTableAddr + kIidHealStaff * sizeof(IInfo), heal_info);
-
-  IInfo vuln_info{};
-  vuln_info.id = kIidVulnerary;
-  vuln_info.kind = 9;
-  WriteRom(kIInfoTableAddr + kIidVulnerary * sizeof(IInfo), vuln_info);
-
-  WriteRom<uint32_t>(kAiStaffActionTableAddr + 0u, kIidHealStaff);
-  WriteRom<uint32_t>(kAiStaffActionTableAddr + 4u, kAddrAiTryHealStaff | 1u);
-  WriteRom<uint32_t>(kAiStaffActionTableAddr + 8u, 0u);
-
-  constexpr int32_t kCardOffsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-  for (int i = 0; i < 4; ++i) {
-    WriteRom<int32_t>(kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u,
-                      kCardOffsets[i][0]);
-    WriteRom<int32_t>(
-        kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u + 4u,
-        kCardOffsets[i][1]);
-  }
-
-  GbaPtr<Unit> lyn = GetUnit(1);
-  GbaPtr<Unit> brigand_a = GetUnit(0x81);
-  GbaPtr<Unit> brigand_b = GetUnit(0x82);
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  GbaPtr<Unit> brigand_b = BrigandB();
   GbaPtr<AiDecision> dec(kAiDecisionAddr);
   GbaPtr<Proc> proc(kProcsAddr);
 
   // Switch to Red (Enemy) phase.
-  *GbaPtr<uint8_t>(kAiPlayStatusAddr + 0x0Fu) = kFactionRed;
+  SetPhaseFaction(kFactionRed);
 
   // --- Phase A: Wounded enemy recovers with Vulnerary via CpDecideMain ---
   brigand_a->hp = 4;  // Below 50% HP -> recovery mode
-  brigand_a->items[1] = static_cast<uint16_t>((3u << 8) | kIidVulnerary);
-  *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = brigand_a;
-  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_a->id);
-  *GbaPtr<uint8_t>(kAiStateAddr + 0x79u) = 0u;
-  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Bu) = 2u;  // Stationary recovery check
+  brigand_a->items[1] = MakeItem(kIidVulnerary, 3);
+  SetActiveAiUnit(brigand_a);
+  ResetAiDecideState(kAiRecoveryModeStationary);
   AiClearDecision();
 
   CpDecideMain();
   EXPECT_EQ(dec->action_performed, 1);
-  EXPECT_EQ(dec->action_id, 6u);  // Use healing item
+  EXPECT_EQ(dec->action_id, kAiActionUseItem);
   EXPECT_EQ(dec->item_slot, 1u);
 
   CpPerformDispatchAction(proc);
-  EXPECT_EQ(*GbaPtr<uint32_t>(proc.addr + 0x2Cu), kAddrCpPerformUseItem | 1u);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformUseItem));
 
   // --- Phase B: Healthy enemy executes Script A attack + combat sim ---
   lyn->x = 2;
@@ -1088,41 +1238,39 @@ TEST_F(SkirmishIntegrationTest, FullEnemyAiTurnDecisionAndExecution) {
   brigand_b->ai_a_pc = 0u;
   SyncUnitMap();
 
-  *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = brigand_b;
-  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_b->id);
-  *GbaPtr<uint8_t>(kAiStateAddr + 0x79u) = 0u;
-  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Bu) = 0u;
+  SetActiveAiUnit(brigand_b);
+  ResetAiDecideState(kAiRecoveryModeDefault);
   AiClearDecision();
 
   CpDecideMain();
   EXPECT_EQ(dec->action_performed, 1);
-  EXPECT_EQ(dec->action_id, 1u);  // Attack
+  EXPECT_EQ(dec->action_id, kAiActionAttack);
   EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(lyn->id));
 
   // --- Phase C: Staff healer dispatches Heal staff via AiTrySpecialAction ---
   brigand_a->x = 5;
   brigand_a->y = 3;
   brigand_a->ai_flags |= 1u;  // Flagged for recovery
-  brigand_b->wexp[4] = 251u;  // S-rank staves
-  brigand_b->items[1] = static_cast<uint16_t>((30u << 8) | kIidHealStaff);
+  brigand_b->wexp[static_cast<int>(ItemKind::kStaff)] = 251u;  // S-rank staves
+  brigand_b->items[1] = MakeItem(kIidHealStaff, 30);
   SyncUnitMap();
 
-  *GbaPtr<uint8_t>(kAiStateAddr + 0x7Cu) = 80u;  // Heal threshold 80%
+  SetAiHealThreshold(80);
   AiClearDecision();
-  EXPECT_TRUE(AiTrySpecialAction(kAddrAiIsUnitEnemy | 1u));
+  EXPECT_TRUE(AiTrySpecialAction(ThumbAddr(kAddrAiIsUnitEnemy)));
   EXPECT_EQ(dec->action_performed, 1);
-  EXPECT_EQ(dec->action_id, 5u);  // Staff action
+  EXPECT_EQ(dec->action_id, kAiActionStaff);
   EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(brigand_a->id));
 
   CpPerformDispatchAction(proc);
-  EXPECT_EQ(*GbaPtr<uint32_t>(proc.addr + 0x2Cu), kAddrCpPerformStaff | 1u);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformStaff));
 
   // --- Phase D: CpPerformActionLoop syncs unit coords and breaks proc ---
-  dec->action_id = 0u;  // Wait
+  dec->action_id = kAiActionWait;
   dec->x_move = 3u;
   dec->y_move = 4u;
   CpPerformDispatchAction(proc);
-  EXPECT_EQ(*GbaPtr<uint32_t>(proc.addr + 0x2Cu), kAddrCpPerformWaitDone | 1u);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformWaitDone));
   CpPerformActionLoop(proc);
   EXPECT_EQ(brigand_b->x, 3);
   EXPECT_EQ(brigand_b->y, 4);
