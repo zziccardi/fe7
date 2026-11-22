@@ -5,6 +5,7 @@
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item/item.h"
+#include "game/map/map.h"
 #include "game/unit/unit.h"
 
 namespace fe7 {
@@ -16,6 +17,7 @@ void RegisterAllNativeFunctions() {
   RegisterUnitFunctions();
   RegisterItemFunctions();
   RegisterBattleFunctions();
+  RegisterMapFunctions();
 }
 
 }  // namespace fe7

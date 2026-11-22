@@ -22,6 +22,7 @@
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item/item.h"
+#include "game/map/map.h"
 #include "game/register_all.h"
 #include "game/unit.h"
 #include "game/unit/unit.h"
@@ -50,6 +51,7 @@ enum class FuzzMode {
   kItemAndUnit,
   kValidItemInR0,
   kBattlePair,
+  kMapState,
   kTracesOnly,
 };
 
@@ -230,6 +232,32 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kBattlePair},
     {"BattleApplyWeaponTriangleEffect",
      fe7::kAddrBattleApplyWeaponTriangleEffect, false, FuzzMode::kBattlePair},
+    // Wave 2: Map & Pathfinding (0x08004408, 0x0801906C..0x0801B1DC)
+    {"MapInit", fe7::kAddrMapInit, false, FuzzMode::kMapState},
+    {"MapFill", fe7::kAddrMapFill, false, FuzzMode::kMapState},
+    {"MapFillEdges", fe7::kAddrMapFillEdges, false, FuzzMode::kMapState},
+    {"SetWorkingMap", fe7::kAddrSetWorkingMap, false, FuzzMode::kMapState},
+    {"SetWorkingMoveTable", fe7::kAddrSetWorkingMoveTable, false,
+     FuzzMode::kMapState},
+    {"GetWorkingMoveTable", fe7::kAddrGetWorkingMoveTable, true,
+     FuzzMode::kScalarRegs},
+    {"MapFloodCoreStep", fe7::kAddrMapFloodCoreStep, false,
+     FuzzMode::kMapState},
+    {"MapFloodCoreRam", fe7::kAddrMapFloodCoreRam, false, FuzzMode::kMapState},
+    {"BeginMapFlood", fe7::kAddrBeginMapFlood, false, FuzzMode::kMapState},
+    {"MapFloodUnit", fe7::kAddrMapFloodUnit, false, FuzzMode::kMapState},
+    {"MapFloodUnitMovement", fe7::kAddrMapFloodUnitMovement, false,
+     FuzzMode::kMapState},
+    {"MapFloodUnitExtended", fe7::kAddrMapFloodUnitExtended, false,
+     FuzzMode::kMapState},
+    {"MapFloodRangeUnitless", fe7::kAddrMapFloodRangeUnitless, false,
+     FuzzMode::kMapState},
+    {"MapFloodExtended", fe7::kAddrMapFloodExtended, false,
+     FuzzMode::kMapState},
+    {"MapFloodOnWorkingMap", fe7::kAddrMapFloodOnWorkingMap, false,
+     FuzzMode::kMapState},
+    {"MapAddInRange", fe7::kAddrMapAddInRange, false, FuzzMode::kMapState},
+    {"MapSetInRange", fe7::kAddrMapSetInRange, false, FuzzMode::kMapState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -465,6 +493,215 @@ std::vector<fe7::TraceRecord> MakeBattleUnitTraces(uint32_t gba_addr,
   return out;
 }
 
+// Writes a padded FE7 row-pointer table + tile grid into `ewram` at `buf_off`
+// and stores `row_ptrs + 2` into `ewram` at `map_ptr_addr`.
+uint32_t InitSyntheticMapBuffer(std::vector<uint8_t>& ewram, uint32_t buf_off,
+                                uint32_t map_ptr_addr, int width, int height,
+                                uint8_t fill_byte) {
+  const uint32_t buf_addr = 0x02000000u + buf_off;
+  const uint32_t rows = static_cast<uint32_t>(height + 4);
+  const uint32_t stride = static_cast<uint32_t>(width + 2);
+  const uint32_t tile_base_off = buf_off + rows * 4u;
+  std::memset(ewram.data() + tile_base_off, fill_byte, rows * stride);
+  for (uint32_t r = 0; r < rows; ++r) {
+    const uint32_t row_addr = 0x02000000u + tile_base_off + r * stride + 1u;
+    std::memcpy(ewram.data() + buf_off + r * 4u, &row_addr, sizeof(row_addr));
+  }
+  const uint32_t map_addr = buf_addr + 8u;
+  std::memcpy(ewram.data() + (map_ptr_addr - 0x02000000u), &map_addr,
+              sizeof(map_addr));
+  return map_addr;
+}
+
+// Synthesizes valid 2D padded maps, terrain, unit grid, movement tables, and
+// BFS queue state for all 17 Wave 2 Map & Pathfinding functions.
+std::vector<fe7::TraceRecord> MakeMapTraces(uint32_t gba_addr, size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x4A9F100Du ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    const int width = 6 + static_cast<int>(NextXorshift(rng) % 6u);
+    const int height = 6 + static_cast<int>(NextXorshift(rng) % 6u);
+    const fe7::MapSize sz{static_cast<int16_t>(width),
+                          static_cast<int16_t>(height)};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kInitBufOff = 0x14000u;
+    constexpr uint32_t kMovTableOff = 0x15000u;
+    constexpr uint32_t kUnitObjOff = 0x15100u;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr,
+                           width, height, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, width,
+                           height, 0x00u);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, width, height, 0xFFu);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, width,
+                           height, 0x00u);
+
+    // Populate interior terrain (1=plains, 2=forest, occasional 0=wall) and
+    // unit occupancy while keeping the 1-tile/2-tile padding border at 0.
+    const uint32_t rows = static_cast<uint32_t>(height + 4);
+    const uint32_t stride = static_cast<uint32_t>(width + 2);
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    const uint32_t unit_tiles = kUnitMapBufOff + rows * 4u;
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        const uint32_t tile_off = static_cast<uint32_t>(y + 2) * stride +
+                                  static_cast<uint32_t>(x + 1);
+        const uint32_t r = NextXorshift(rng) % 10u;
+        rec.ewram[terrain_tiles + tile_off] =
+            (r == 0u) ? 0u : ((r < 7u) ? 1u : 2u);
+        const uint32_t u = NextXorshift(rng) % 12u;
+        if (u == 0u) {
+          rec.ewram[unit_tiles + tile_off] = 0x01u;
+        } else if (u == 1u) {
+          rec.ewram[unit_tiles + tile_off] = 0x81u;
+        }
+      }
+    }
+
+    // Set gWorkingMap = gMapMovement.
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+
+    // Populate 65-byte movement cost table in both EWRAM and gWorkingMovTable.
+    std::array<int8_t, 65> mov_table{};
+    mov_table.fill(1);
+    mov_table[0] = -1;  // Border/wall terrain is impassable.
+    mov_table[1] = 1;
+    mov_table[2] = 2;
+    std::memcpy(rec.ewram.data() + kMovTableOff, mov_table.data(),
+                mov_table.size());
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMovTableAddr - 0x03000000u),
+                mov_table.data(), mov_table.size());
+
+    // Populate a synthetic Unit positioned inside the map.
+    PopulateSyntheticUnit(rec.ewram, kUnitObjOff, rng);
+    const int ux = 1 + static_cast<int>(NextXorshift(rng) %
+                                        static_cast<uint32_t>(width - 2));
+    const int uy = 1 + static_cast<int>(NextXorshift(rng) %
+                                        static_cast<uint32_t>(height - 2));
+    fe7::Unit unit{};
+    std::memcpy(&unit, rec.ewram.data() + kUnitObjOff, sizeof(unit));
+    unit.x = static_cast<int8_t>(ux);
+    unit.y = static_cast<int8_t>(uy);
+    unit.bonus_mov = static_cast<int8_t>(NextXorshift(rng) % 3u);
+    std::memcpy(rec.ewram.data() + kUnitObjOff, &unit, sizeof(unit));
+
+    // Seed gMapFloodSquareBufB and gMapFloodSt for MapFloodCoreRam / Step.
+    fe7::MapFloodSquare root{static_cast<int8_t>(ux), static_cast<int8_t>(uy),
+                             5u, 0u};
+    fe7::MapFloodSquare sentinel{0, 0, 4u, 0u};
+    const uint32_t buf_b_off = fe7::kMapFloodBufBAddr - 0x03000000u;
+    std::memcpy(rec.iwram.data() + buf_b_off, &root, sizeof(root));
+    std::memcpy(rec.iwram.data() + buf_b_off + sizeof(root), &sentinel,
+                sizeof(sentinel));
+    fe7::MapFloodState st{};
+    st.active_queue = fe7::GbaPtr<fe7::MapFloodSquare>(fe7::kMapFloodBufBAddr);
+    st.next_queue = fe7::GbaPtr<fe7::MapFloodSquare>(fe7::kMapFloodBufAAddr);
+    st.has_move_limit = static_cast<int8_t>(NextXorshift(rng) & 1u);
+    st.max_move = static_cast<uint8_t>(2u + (NextXorshift(rng) % 6u));
+    st.mover_id =
+        static_cast<uint8_t>((NextXorshift(rng) & 1u) ? 0x01u : 0x81u);
+    st.unk_0b = 0x78u;
+    std::memcpy(rec.iwram.data() + (fe7::kMapFloodStAddr - 0x03000000u), &st,
+                sizeof(st));
+
+    const uint32_t unit_addr = 0x02000000u + kUnitObjOff;
+    const uint32_t mov_table_addr = 0x02000000u + kMovTableOff;
+    const uint32_t mov_budget = 1u + (NextXorshift(rng) % 7u);
+
+    switch (gba_addr) {
+      case fe7::kAddrMapInit:
+        rec.regs[0] = 0x02000000u + kInitBufOff;
+        rec.regs[1] = fe7::kMapMovementAddr;
+        rec.regs[2] = static_cast<uint32_t>(width);
+        rec.regs[3] = static_cast<uint32_t>(height);
+        break;
+      case fe7::kAddrMapFill:
+      case fe7::kAddrMapFillEdges:
+        rec.regs[0] = mov_map_addr;
+        rec.regs[1] = NextXorshift(rng) & 0xFFu;
+        break;
+      case fe7::kAddrSetWorkingMap:
+        rec.regs[0] = mov_map_addr;
+        break;
+      case fe7::kAddrSetWorkingMoveTable:
+        rec.regs[0] = mov_table_addr;
+        break;
+      case fe7::kAddrMapFloodCoreStep: {
+        static constexpr int kDx[4] = {-1, 1, 0, 0};
+        static constexpr int kDy[4] = {0, 0, -1, 1};
+        const uint32_t dir = NextXorshift(rng) & 3u;
+        rec.regs[0] = dir;
+        rec.regs[1] = static_cast<uint32_t>(static_cast<int32_t>(kDx[dir]));
+        rec.regs[2] = static_cast<uint32_t>(static_cast<int32_t>(kDy[dir]));
+        break;
+      }
+      case fe7::kAddrMapFloodCoreRam:
+        break;
+      case fe7::kAddrBeginMapFlood:
+        rec.regs[0] = static_cast<uint32_t>(ux);
+        rec.regs[1] = static_cast<uint32_t>(uy);
+        rec.regs[2] = mov_budget;
+        rec.regs[3] = (NextXorshift(rng) % 3u == 0u) ? 0u : 0x01u;
+        break;
+      case fe7::kAddrMapFloodUnit:
+      case fe7::kAddrMapFloodUnitExtended:
+        rec.regs[0] = unit_addr;
+        break;
+      case fe7::kAddrMapFloodUnitMovement:
+        rec.regs[0] = unit_addr;
+        rec.regs[1] = mov_budget;
+        break;
+      case fe7::kAddrMapFloodRangeUnitless:
+      case fe7::kAddrMapFloodExtended:
+        rec.regs[0] = static_cast<uint32_t>(ux);
+        rec.regs[1] = static_cast<uint32_t>(uy);
+        rec.regs[2] = mov_table_addr;
+        break;
+      case fe7::kAddrMapFloodOnWorkingMap:
+        rec.regs[0] = unit_addr;
+        rec.regs[1] = static_cast<uint32_t>(ux);
+        rec.regs[2] = static_cast<uint32_t>(uy);
+        rec.regs[3] = mov_budget;
+        break;
+      case fe7::kAddrMapAddInRange:
+        rec.regs[0] = static_cast<uint32_t>(ux);
+        rec.regs[1] = static_cast<uint32_t>(uy);
+        rec.regs[2] = NextXorshift(rng) % 6u;
+        rec.regs[3] = static_cast<uint32_t>(
+            static_cast<int32_t>(NextXorshift(rng) % 5u) - 2);
+        break;
+      case fe7::kAddrMapSetInRange: {
+        const uint32_t min_r = NextXorshift(rng) % 4u;
+        const uint32_t max_r = min_r + (NextXorshift(rng) % 4u);
+        rec.regs[0] = static_cast<uint32_t>(ux);
+        rec.regs[1] = static_cast<uint32_t>(uy);
+        rec.regs[2] = min_r;
+        rec.regs[3] = max_r;
+        break;
+      }
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -571,6 +808,12 @@ int main(int argc, char** argv) {
         auto battle_traces = MakeBattleUnitTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, battle_traces, 0,
                                 0xFE700001u, opts);
+        break;
+      }
+      case FuzzMode::kMapState: {
+        auto map_traces = MakeMapTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, map_traces, 0, 0xFE700001u,
+                                opts);
         break;
       }
       case FuzzMode::kTracesOnly:

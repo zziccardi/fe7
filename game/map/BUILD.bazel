@@ -1,0 +1,30 @@
+# 2D tile-map helpers, range diamonds, and BFS pathfinding (Wave 2).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "map",
+    srcs = ["map.cc"],
+    hdrs = ["map.h"],
+    deps = [
+        "//game:unit_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "map_test",
+    srcs = ["map_test.cc"],
+    deps = [
+        ":map",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)

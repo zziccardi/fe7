@@ -58,6 +58,7 @@ fe7_game_cc_library(
         "//game/engine:proc",
         "//game/engine:rng",
         "//game/item:item",
+        "//game/map:map",
         "//game/unit:unit",
     ],
 )
