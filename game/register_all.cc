@@ -18,6 +18,7 @@
 #include "game/item/item.h"
 #include "game/map/ballista.h"
 #include "game/map/map.h"
+#include "game/map/map_range.h"
 #include "game/map/trap.h"
 #include "game/phase/phase.h"
 #include "game/support/support.h"
@@ -38,6 +39,7 @@ void RegisterAllNativeFunctions() {
   RegisterMapFunctions();
   RegisterTrapFunctions();
   RegisterBallistaFunctions();
+  RegisterMapRangeFunctions();
   RegisterPhaseFunctions();
   RegisterSupportFunctions();
   RegisterAiFunctions();

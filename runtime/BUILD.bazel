@@ -234,6 +234,7 @@ cc_binary(
         "//game/item:item",
         "//game/map:ballista",
         "//game/map:map",
+        "//game/map:map_range",
         "//game/map:trap",
         "//game/phase:phase",
         "//game/support:support",

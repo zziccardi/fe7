@@ -11,6 +11,7 @@
 #include <cstdint>
 
 #include "game/ai/ai.h"
+#include "game/map/map_range.h"
 #include "runtime/gba_ptr.h"
 
 namespace fe7 {
@@ -23,7 +24,6 @@ inline constexpr uint32_t kAiAdjacentOffsetsAddr = 0x08B98AC8u;
 
 // External helper ROM addresses called via GbaCall() (until decompiled).
 inline constexpr uint32_t kAddrGetUnitLeaderPid = 0x08018C20u;
-inline constexpr uint32_t kAddrMapFloodRangeExtend = 0x0801A0FCu;
 inline constexpr uint32_t kAddrMapClearOther = 0x0801B148u;
 inline constexpr uint32_t kAddrSetWorkingBmMap = 0x0801B190u;
 inline constexpr uint32_t kAddrMapAddInBoundedRange = 0x0801B19Cu;

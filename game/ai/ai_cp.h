@@ -10,6 +10,7 @@
 #include <cstdint>
 
 #include "game/engine/proc.h"
+#include "game/map/map_range.h"
 #include "runtime/gba_ptr.h"
 
 namespace fe7 {
@@ -40,8 +41,6 @@ inline constexpr uint32_t kAddrApplyUnitMovePos = 0x080181D0u;
 inline constexpr uint32_t kAddrUnitRemoveItem = 0x08018D50u;
 inline constexpr uint32_t kAddrRenderMap = 0x08019504u;
 inline constexpr uint32_t kAddrRenderMapForFade = 0x08019584u;
-inline constexpr uint32_t kAddrBuildBestMoveScript = 0x08019E5Cu;
-inline constexpr uint32_t kAddrApplyMoveScriptToAction = 0x0801A044u;
 inline constexpr uint32_t kAddrStartMapFade = 0x0801D608u;
 inline constexpr uint32_t kAddrHideUnitSprite = 0x08026574u;
 inline constexpr uint32_t kAddrShowUnitSprite = 0x08026598u;
