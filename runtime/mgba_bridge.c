@@ -8,8 +8,6 @@
 #include <mgba/internal/arm/arm.h>
 #include <mgba/internal/arm/isa-inlines.h>
 #include <mgba/internal/gba/gba.h>
-#include <stdlib.h>
-#include <string.h>
 
 // Snapshot of the volatile ARM7TDMI state needed to nest fallback calls
 // re-entrantly (e.g., when native code calls a Thumb function that calls back

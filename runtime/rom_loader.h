@@ -31,10 +31,14 @@ inline constexpr std::string_view kExpectedFe7UsSha1 =
 
 // Owned in-memory ROM image produced by LoadRomFile() or LoadSyntheticRom().
 struct RomImage {
-  std::vector<uint8_t> bytes;  // Raw ROM contents mapped at 0x08000000
-  std::string sha1_hex;  // 40-character lowercase hex SHA-1 digest of `bytes`
-  bool is_synthetic =
-      false;  // True if loaded via LoadSyntheticRom() (unverified test ROM)
+  // Raw ROM contents mapped at 0x08000000
+  std::vector<uint8_t> bytes;
+
+  // 40-character lowercase hex SHA-1 digest of `bytes`
+  std::string sha1_hex;
+
+  // True if loaded via LoadSyntheticRom() (unverified test ROM)
+  bool is_synthetic = false;
 };
 
 // Computes the 40-character lowercase hex SHA-1 digest of `data` (FIPS 180-4).

@@ -22,13 +22,17 @@ namespace fe7 {
 // Host backing-store pointers for directly addressable GBA memory regions.
 // Populated by hal::Init() (or test fixtures) and cleared by hal::Shutdown().
 struct GbaMemoryMap {
-  uint8_t* absl_nullable ewram =
-      nullptr;  // 0x02000000..0x0203FFFF (256 KiB external WRAM)
-  uint8_t* absl_nullable iwram =
-      nullptr;  // 0x03000000..0x03007FFF (32 KiB internal WRAM)
-  uint8_t* absl_nullable rom =
-      nullptr;          // 0x08000000..0x09FFFFFF (up to 32 MiB Game Pak ROM)
-  size_t rom_size = 0;  // Actual loaded ROM byte length for bounds checking
+  // 0x02000000..0x0203FFFF (256 KiB external WRAM)
+  uint8_t* absl_nullable ewram = nullptr;
+
+  // 0x03000000..0x03007FFF (32 KiB internal WRAM)
+  uint8_t* absl_nullable iwram = nullptr;
+
+  // 0x08000000..0x09FFFFFF (up to 32 MiB Game Pak ROM)
+  uint8_t* absl_nullable rom = nullptr;
+
+  // Actual loaded ROM byte length for bounds checking
+  size_t rom_size = 0;
 };
 
 // Global active GBA memory map used by ResolveGbaRaw() and GbaPtr<T>.
@@ -103,7 +107,9 @@ struct GbaPtr {
   T* absl_nonnull get() const {
     return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T)));
   }
+
   T* absl_nonnull operator->() const { return get(); }
+
   T& operator*() const { return *get(); }
 
   // Indexes element `idx` relative to this pointer, validating alignment and

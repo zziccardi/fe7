@@ -77,7 +77,7 @@ void fe7_mgba_set_gprs(struct ARMCore* cpu, const int32_t in_gprs[16]);
 
 // Reads or writes a single general-purpose register `reg` (0..15) on `cpu`.
 int32_t fe7_mgba_get_gpr(struct ARMCore* cpu, int reg);
-void fe7_mgba_set_gpr(struct ARMCore* cpu, int reg, int32_t val);
+void    fe7_mgba_set_gpr(struct ARMCore* cpu, int reg, int32_t val);
 
 // Saves/restores the re-entrant ARM7TDMI execution context (GPRs, CPSR,
 // prefetch queue, cycle counters, and execution mode) into a caller-provided
@@ -89,9 +89,10 @@ size_t fe7_mgba_state_size(void);
 
 // Performs 8/16/32-bit loads and stores through the full GBA memory bus
 // (handling MMIO/VRAM/OAM).
-uint8_t fe7_mgba_load8(struct ARMCore* cpu, uint32_t addr);
+uint8_t  fe7_mgba_load8(struct ARMCore* cpu, uint32_t addr);
 uint16_t fe7_mgba_load16(struct ARMCore* cpu, uint32_t addr);
 uint32_t fe7_mgba_load32(struct ARMCore* cpu, uint32_t addr);
+
 void fe7_mgba_store8(struct ARMCore* cpu, uint32_t addr, uint8_t val);
 void fe7_mgba_store16(struct ARMCore* cpu, uint32_t addr, uint16_t val);
 void fe7_mgba_store32(struct ARMCore* cpu, uint32_t addr, uint32_t val);

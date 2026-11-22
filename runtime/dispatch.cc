@@ -19,7 +19,9 @@ constexpr size_t kRomHalfwordSlots = kRomRegionSize / 2u;
 // Zero-initialized in BSS so untouched virtual pages consume no physical RAM
 // until registered.
 std::array<NativeFn, kRomHalfwordSlots> gNativeTable{};
+
 FallbackExecutor absl_nullable gFallbackExecutor = nullptr;
+
 bool gTrackFallbacks = true;
 
 // Use absl::NoDestructor to avoid non-trivial static destruction order issues

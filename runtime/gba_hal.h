@@ -27,16 +27,16 @@ inline constexpr int kAudioSampleRate = 48000;
 
 // Active-high GBA keypad bitmask constants matching GBA KEYINPUT bit positions.
 enum GbaKey : uint16_t {
-  kKeyA = 1u << 0,
-  kKeyB = 1u << 1,
+  kKeyA      = 1u << 0,
+  kKeyB      = 1u << 1,
   kKeySelect = 1u << 2,
-  kKeyStart = 1u << 3,
-  kKeyRight = 1u << 4,
-  kKeyLeft = 1u << 5,
-  kKeyUp = 1u << 6,
-  kKeyDown = 1u << 7,
-  kKeyR = 1u << 8,
-  kKeyL = 1u << 9,
+  kKeyStart  = 1u << 3,
+  kKeyRight  = 1u << 4,
+  kKeyLeft   = 1u << 5,
+  kKeyUp     = 1u << 6,
+  kKeyDown   = 1u << 7,
+  kKeyR      = 1u << 8,
+  kKeyL      = 1u << 9,
 };
 
 namespace hal {
@@ -82,7 +82,7 @@ size_t CopySaveData(uint8_t* absl_nullable out_buf, size_t max_bytes);
 
 // Reads an 8-bit, 16-bit, or 32-bit value from a GBA memory-mapped I/O
 // register.
-uint8_t MmioRead8(uint32_t addr);
+uint8_t  MmioRead8(uint32_t addr);
 uint16_t MmioRead16(uint32_t addr);
 uint32_t MmioRead32(uint32_t addr);
 
@@ -137,15 +137,20 @@ uint32_t SwiSqrt(uint32_t value);
 // --- GBA SIO / Link Arena / Bonus Disk stub interface ---
 
 namespace link {
+
 // Initializes serial I/O / link cable state (no-op stub until multiplayer/link
 // support is added).
 void Init();
+
 // Polls link cable state once per frame (no-op stub).
 void Poll();
+
 // Returns whether Mario Kart: Double Dash!! Bonus Disk content is unlocked.
 bool IsBonusDiskUnlocked();
+
 // Sets whether Bonus Disk content is treated as unlocked.
 void SetBonusDiskUnlocked(bool unlocked);
+
 }  // namespace link
 
 // --- Phase 5 native enhancement seams (no-ops during Phases 1-4 lockstep) ---

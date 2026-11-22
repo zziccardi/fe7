@@ -12,8 +12,7 @@
 #include "runtime/mgba_bridge.h"
 #include "runtime/rom_loader.h"
 
-namespace fe7 {
-namespace hal {
+namespace fe7::hal {
 namespace {
 
 constexpr int kArmRegR0 = 0;
@@ -23,13 +22,16 @@ constexpr int kArmRegR3 = 3;
 constexpr int kArmRegSp = 13;
 constexpr int kArmRegLr = 14;
 
-mCore* absl_nullable gCore = nullptr;
-ARMCore* absl_nullable gCpu = nullptr;
+mCore*   absl_nullable gCore = nullptr;
+ARMCore* absl_nullable gCpu  = nullptr;
+
 // Owned copy of the loaded ROM image; mGBA's VFileFromConstMemory borrows this
 // pointer directly without copying, so it must outlive gCore. Wrapped in
 // absl::NoDestructor to avoid non-trivial static destruction.
 absl::NoDestructor<std::vector<uint8_t>> gRomBytes;
+
 std::array<uint32_t, kViewportWidth * kViewportHeight> gFramebuffer{};
+
 bool gBonusDiskUnlocked = false;
 
 // Called by libmgba's patched branch instructions to intercept fallback CPU
@@ -307,15 +309,19 @@ uint32_t SwiSqrt(uint32_t value) {
 }
 
 namespace link {
+
 void Init() {}
+
 void Poll() {}
+
 bool IsBonusDiskUnlocked() { return gBonusDiskUnlocked; }
+
 void SetBonusDiskUnlocked(bool unlocked) { gBonusDiskUnlocked = unlocked; }
+
 }  // namespace link
 
 void VideoSubmitFrame() {}
 
 void TextHookDrawGlyph(int, int, uint16_t, uint16_t) {}
 
-}  // namespace hal
-}  // namespace fe7
+}  // namespace fe7::hal
