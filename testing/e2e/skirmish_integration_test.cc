@@ -1,9 +1,15 @@
 // End-to-end pure-native tactical skirmish integration test.
 //
-// Wires all 11 decompiled FE7 gameplay subsystems together across a synthetic
-// 8x8 combat level (Lyn + Kent vs. 2 Brigands) with zero retail ROM and zero
+// Wires all 14 decompiled FE7 gameplay subsystems together across synthetic
+// 8x8 combat levels (Lyn + Kent vs. 2 Brigands) with zero retail ROM and zero
 // libmgba ARM7TDMI fallback:
 //   - Movement BFS (`MapInit`, `MapFill`, `MapFloodUnit`)
+//   - Traps, Light Runes & Fog of War (`AddLightRune`, `ApplyLightRuneTerrain`,
+//     `AddFireTrap`, `RefreshEntityMaps`, `TickDamagingTraps`, `RemoveTrap`)
+//   - Unit Actions, Stat Boosters, Autolevel & Rescue/Drop
+//   (`ApplyItemStatBoost`,
+//     `UnitApplyBonusLevels`, `CanUnitCarry`, `UnitRescue`, `UnitDropRescue`,
+//     `KillUnit`)
 //   - Support aura bonuses & per-turn adjacent growth (`GetUnitSupportBonuses`,
 //     `ProcessSupportGains`, `CanUnitSupportNow`, `UnitGainSupportLevel`)
 //   - Battle forecasting & real combat unwinding (`InitBattleUnit`,
@@ -14,15 +20,19 @@
 //     `UnitRemoveInvalidItems`)
 //   - Phase rotation & faction refresh (`BmMainChangePhase`, `GetCurrentPhase`,
 //     `CountUnitsByFaction`)
-//   - Enemy AI positioning & combat scoring (`AiFindBestPositionInRange`,
-//     `AiComputeCombatScore`, `AiSetDecision`)
+//   - Enemy AI positioning, combat scoring, recovery, threat-based auto-equip,
+//     nearby counting & random move (`AiFindBestPositionInRange`,
+//     `AiComputeCombatScore`, `AiSetDecision`, `AiUpdateFactionRecovery`,
+//     `AiEquipBestItem`, `AiCountEnemiesNearby`, `AiTryMoveRandomly`)
 
 #include <cstdint>
 #include <cstring>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "game/action/action.h"
 #include "game/ai/ai.h"
+#include "game/ai/ai_decide.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
@@ -31,6 +41,7 @@
 #include "game/item.h"
 #include "game/item/item.h"
 #include "game/map/map.h"
+#include "game/map/trap.h"
 #include "game/phase/phase.h"
 #include "game/register_all.h"
 #include "game/support/support.h"
@@ -54,6 +65,7 @@ constexpr uint32_t kLynSupportInfoAddr = 0x08010200u;
 constexpr uint32_t kKentSupportInfoAddr = 0x08010220u;
 constexpr uint32_t kJobRankGroup0Addr = 0x08010280u;
 constexpr uint32_t kJobRankGroup1Addr = 0x08010290u;
+constexpr uint32_t kAngelicRobeBonusAddr = 0x080102A0u;
 
 // Synthetic EWRAM map buffers (each 0x1000 bytes, well away from unit arrays).
 constexpr uint32_t kTerrainBufAddr = 0x02010000u;
@@ -61,6 +73,8 @@ constexpr uint32_t kUnitMapBufAddr = 0x02011000u;
 constexpr uint32_t kMovMapBufAddr = 0x02012000u;
 constexpr uint32_t kRngMapBufAddr = 0x02013000u;
 constexpr uint32_t kOtherMapBufAddr = 0x02014000u;
+constexpr uint32_t kFogMapBufAddr = 0x02015000u;
+constexpr uint32_t kHiddenMapBufAddr = 0x02016000u;
 
 // Synthetic character / class / item IDs.
 constexpr uint8_t kPidLyn = 1;
@@ -75,6 +89,8 @@ constexpr uint8_t kJidBrigand = 3;
 constexpr uint8_t kIidIronSword = 1;
 constexpr uint8_t kIidIronLance = 2;
 constexpr uint8_t kIidIronAxe = 3;
+constexpr uint8_t kIidSteelAxe = 4;
+constexpr uint8_t kIidAngelicRobe = 5;
 
 constexpr int kMapW = 8;
 constexpr int kMapH = 8;
@@ -242,6 +258,19 @@ class SkirmishIntegrationTest : public ::testing::Test {
     set_item(kIidIronSword, ItemKind::kSword, 46, 5, 90, 5);
     set_item(kIidIronLance, ItemKind::kLance, 45, 7, 80, 8);
     set_item(kIidIronAxe, ItemKind::kAxe, 45, 8, 75, 10);
+    set_item(kIidSteelAxe, ItemKind::kAxe, 30, 11, 65, 15);
+
+    ItemStatBonuses robe_bonuses{};
+    robe_bonuses.hp = 7;
+    WriteRom(kAngelicRobeBonusAddr, robe_bonuses);
+    IInfo robe{};
+    robe.id = kIidAngelicRobe;
+    robe.kind = static_cast<uint8_t>(ItemKind::kItem);
+    robe.max_uses = 1;
+    robe.bonuses = GbaPtr<const ItemStatBonuses>(kAngelicRobeBonusAddr);
+    WriteRom(kIInfoTableAddr +
+                 static_cast<uint32_t>(kIidAngelicRobe) * sizeof(IInfo),
+             robe);
 
     // Classes at kJInfoTableAddr: Lord, Cavalier, Brigand.
     auto set_job = [&](uint8_t jid, int8_t mov, int8_t con, int8_t power) {
@@ -338,6 +367,20 @@ class SkirmishIntegrationTest : public ::testing::Test {
     WriteRom(kChapterEventAssetTableAddr, kChapterEventsPtrsAddr);
     WriteRom(kChapterEventsPtrsAddr, kEmptyEventListAddr);
     WriteRom(kVictoryEventTableAddr + 0x0Cu, kEmptyEventListAddr);
+
+    // Top-level Enemy AI ROM tables: faction counts, recovery thresholds, and
+    // nearby relative tile offsets.
+    const int32_t faction_counts[3] = {62, 20, 50};
+    std::memcpy(rom_.data() + (kAiFactionUnitCountsAddr - kRomBase),
+                faction_counts, sizeof(faction_counts));
+    const uint8_t rec_thresholds[8] = {100, 50, 0, 0, 80, 30, 0, 0};
+    std::memcpy(rom_.data() + (kAiRecoveryThresholdTableAddr - kRomBase),
+                rec_thresholds, sizeof(rec_thresholds));
+    const AiPos nearby_offsets[6] = {
+        {0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {0x270F, 0},
+    };
+    std::memcpy(rom_.data() + (kAiNearbyOffsetTableAddr - 4u - kRomBase),
+                nearby_offsets, sizeof(nearby_offsets));
   }
 
   void InitPaddedMap(uint32_t buf_addr, uint32_t ptr_addr, uint8_t fill,
@@ -374,6 +417,11 @@ class SkirmishIntegrationTest : public ::testing::Test {
             GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapRangeAddr), kMapW, kMapH);
     MapInit(GbaPtr<uint8_t>(kOtherMapBufAddr),
             GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kAiMapOtherAddr), kMapW, kMapH);
+    MapInit(GbaPtr<uint8_t>(kFogMapBufAddr),
+            GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapFogAddr), kMapW, kMapH);
+    MapInit(GbaPtr<uint8_t>(kHiddenMapBufAddr),
+            GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapHiddenAddr), kMapW, kMapH);
+    InitTraps();
 
     GbaPtr<GbaPtr<uint8_t>> terrain =
         *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr);
@@ -788,6 +836,116 @@ TEST_F(SkirmishIntegrationTest, WeaponBreakAndSupportRankUpAcrossTurns) {
   UnitGainSupportLevel(lyn, 0);
   EXPECT_EQ(GetSupportLevelBySupportIndex(GbaPtr<const Unit>(lyn.addr), 0),
             2);  // B-rank achieved!
+  EXPECT_TRUE(GetFallbackReport().empty());
+}
+
+TEST_F(SkirmishIntegrationTest, TacticalFogTrapsActionsAndTopLevelAi) {
+  RandInit(0xC0FFEEu);
+  GbaPtr<Unit> lyn = GetUnit(1);
+  GbaPtr<Unit> kent = GetUnit(2);
+  GbaPtr<Unit> brigand_a = GetUnit(0x81);
+  GbaPtr<Unit> brigand_b = GetUnit(0x82);
+
+  // --- 1. Traps, Light Rune & Fog of War (game/map/trap) ---
+  // Enable Fog of War (vision = 3) during Blue Phase.
+  *GbaPtr<uint8_t>(kMapPlayStatusAddr + 0x0Du) = 3u;
+  *GbaPtr<uint8_t>(kMapPlayStatusAddr + 0x0Fu) = kFactionBlue;
+
+  GbaPtr<Trap> rune = AddLightRune(2, 2);
+  ASSERT_TRUE(static_cast<bool>(rune));
+  ApplyLightRuneTerrain();
+  EXPECT_EQ((*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr))[2][2],
+            kTerrainWall);  // Light Rune sets tile impassable (0)
+
+  GbaPtr<Trap> fire = AddFireTrap(4, 3, /*turn_delay=*/1, /*interval=*/2);
+  ASSERT_TRUE(static_cast<bool>(fire));
+  EXPECT_EQ(GetTrapAt(4, 3).addr, fire.addr);
+
+  RefreshEntityMaps();
+  GbaPtr<GbaPtr<uint8_t>> fog = *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapFogAddr);
+  EXPECT_GT(fog[lyn->y][lyn->x], 0u);  // Blue unit illuminates its own tile
+  EXPECT_EQ(fog[7][7], 0u);            // Far corner remains shrouded
+
+  // Tick and reset damaging traps, then clean up Light Rune.
+  TickDamagingTraps();
+  ResetExpiredDamagingTraps();
+  RemoveTrap(rune);
+  EXPECT_FALSE(static_cast<bool>(GetTrapAt(2, 2)));
+  (*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr))[2][2] = kTerrainPlains;
+
+  // Disable fog for the action/AI portion.
+  *GbaPtr<uint8_t>(kMapPlayStatusAddr + 0x0Du) = 0u;
+  RefreshEntityMaps();
+
+  // --- 2. Unit Actions, Stat Boosters, Autolevel & Rescue/Drop ---
+  // Give Lyn an Angelic Robe (+7 HP) in slot 1 and apply it.
+  const int8_t lyn_max_hp_before = lyn->max_hp;
+  lyn->items[1] = static_cast<uint16_t>((1u << 8) | kIidAngelicRobe);
+  EXPECT_EQ(FindUnitItemSlot(GbaPtr<const Unit>(lyn.addr), kIidAngelicRobe), 1);
+  ApplyItemStatBoost(lyn, 1);
+  EXPECT_EQ(lyn->max_hp, lyn_max_hp_before + 7);
+  EXPECT_EQ(lyn->items[1], 0u);  // 1-use stat booster consumed
+
+  // Bonus-level Brigand B by 3 levels and verify HP/stats remain valid.
+  const int8_t b_hp_before = brigand_b->max_hp;
+  UnitApplyBonusLevels(brigand_b, 3);
+  EXPECT_GE(brigand_b->max_hp, b_hp_before);
+
+  // Kent rescues Lyn and drops her onto an adjacent tile (1, 4).
+  ASSERT_TRUE(CanUnitCarry(GbaPtr<const Unit>(kent.addr),
+                           GbaPtr<const Unit>(lyn.addr)));
+  UnitRescue(kent, lyn);
+  EXPECT_EQ(kent->rescue, static_cast<uint8_t>(lyn->id));
+  EXPECT_NE(lyn->flags & kUnitFlagRescued, 0u);
+
+  UnitDropRescue(kent, 1, 4);
+  EXPECT_EQ(kent->rescue, 0u);
+  EXPECT_EQ(lyn->flags & kUnitFlagRescued, 0u);
+  EXPECT_EQ(lyn->x, 1);
+  EXPECT_EQ(lyn->y, 4);
+  SyncUnitMap();
+
+  // --- 3. Top-Level Enemy AI (Recovery, Threat Auto-Equip, Nearby, Move) ---
+  // Switch to Red Phase and wound Brigand A below 50% HP so it enters recovery.
+  *GbaPtr<uint8_t>(kAiPlayStatusAddr + 0x0Fu) = kFactionRed;
+  brigand_a->hp = 5;
+  brigand_b->hp = brigand_b->max_hp;
+  AiUpdateFactionRecovery();
+  EXPECT_NE(brigand_a->ai_flags & 1u, 0u);
+  EXPECT_EQ(brigand_b->ai_flags & 1u, 0u);
+
+  // Equip Brigand B with Iron Axe (Mt 8, slot 0) and Steel Axe (Mt 11, slot 1)
+  // within melee threat of Kent; AiEquipBestItem should swap Steel Axe to 0.
+  brigand_b->x = 3;
+  brigand_b->y = 4;
+  brigand_b->items[0] = static_cast<uint16_t>((45u << 8) | kIidIronAxe);
+  brigand_b->items[1] = static_cast<uint16_t>((30u << 8) | kIidSteelAxe);
+  SyncUnitMap();
+  *GbaPtr<GbaPtr<Unit>>(kAiActiveUnitAddr) = brigand_b;
+  *GbaPtr<uint8_t>(kAiActiveUnitIdAddr) = static_cast<uint8_t>(brigand_b->id);
+
+  GbaPtr<AiDecision> dec(kAiDecisionAddr);
+  AiClearDecision();
+  dec->x_move = 2;
+  dec->y_move = 4;
+  dec->action_id = 0u;
+
+  EXPECT_TRUE(AiCanEquipBestItem());
+  AiEquipBestItem();
+  EXPECT_EQ(GetItemIid(brigand_b->items[0]), kIidSteelAxe);
+  EXPECT_GE(AiCountEnemiesNearby(2, 4), 1);
+
+  // Verify random movement chooses a reachable unoccupied tile.
+  AiClearDecision();
+  AiTryMoveRandomly();
+  EXPECT_EQ(dec->action_performed, 1);
+
+  // Verify KillUnit removes Brigand A from active Red count.
+  const int red_before = CountUnitsByFaction(kFactionRed);
+  KillUnit(brigand_a);
+  EXPECT_EQ(CountUnitsByFaction(kFactionRed), red_before - 1);
+
+  // Zero un-handled ARM7TDMI fallback calls across all 14 subsystems!
   EXPECT_TRUE(GetFallbackReport().empty());
 }
 
