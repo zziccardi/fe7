@@ -12,6 +12,7 @@ fe7_runtime_cc_library(
     visibility = [
         "//game:__subpackages__",
         "//runtime:__subpackages__",
+        "//testing:__subpackages__",
     ],
     deps = ["@abseil-cpp//absl/base:nullability"],
 )
@@ -28,6 +29,7 @@ fe7_runtime_cc_library(
     visibility = [
         "//game:__subpackages__",
         "//runtime:__subpackages__",
+        "//testing:__subpackages__",
     ],
     deps = ["@abseil-cpp//absl/base:nullability"],
 )
@@ -39,6 +41,7 @@ fe7_runtime_cc_library(
     visibility = [
         "//game:__subpackages__",
         "//runtime:__subpackages__",
+        "//testing:__subpackages__",
     ],
     deps = [
         "@abseil-cpp//absl/base:no_destructor",
