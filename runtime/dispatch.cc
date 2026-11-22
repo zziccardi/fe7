@@ -84,6 +84,17 @@ uint32_t GbaCall(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t r2,
                            stack_arg_count);
 }
 
+uint32_t CallFallbackDirect(uint32_t gba_addr, uint32_t r0, uint32_t r1,
+                            uint32_t r2, uint32_t r3,
+                            const uint32_t* absl_nullable stack_args,
+                            size_t stack_arg_count) {
+  const uint32_t aligned = NormalizeRomAddr(gba_addr);
+  assert(gFallbackExecutor != nullptr &&
+         "FallbackExecutor not set for direct fallback oracle call");
+  return gFallbackExecutor(aligned, r0, r1, r2, r3, stack_args,
+                           stack_arg_count);
+}
+
 bool TryDispatchFromCpu(uint32_t gba_addr, uint32_t r0, uint32_t r1,
                         uint32_t r2, uint32_t r3,
                         const uint32_t* absl_nullable stack_args,

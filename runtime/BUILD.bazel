@@ -89,6 +89,21 @@ cc_library(
 )
 
 fe7_runtime_cc_library(
+    name = "trace_recorder",
+    srcs = ["trace_recorder.cc"],
+    hdrs = ["trace_recorder.h"],
+    deps = [
+        ":gba_ptr",
+        "@abseil-cpp//absl/base:no_destructor",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+fe7_runtime_cc_library(
     name = "mgba_hal",
     srcs = ["mgba_hal.cc"],
     deps = [
@@ -97,6 +112,7 @@ fe7_runtime_cc_library(
         ":gba_ptr",
         ":mgba_bridge",
         ":rom_loader",
+        ":trace_recorder",
         "@abseil-cpp//absl/base:no_destructor",
         "@abseil-cpp//absl/base:nullability",
         "@mgba//:mgba_gba",
@@ -114,6 +130,33 @@ fe7_cc_test(
     ],
 )
 
+fe7_runtime_cc_library(
+    name = "diff_harness",
+    srcs = ["diff_harness.cc"],
+    hdrs = ["diff_harness.h"],
+    deps = [
+        ":dispatch",
+        ":gba_ptr",
+        ":trace_recorder",
+        "@abseil-cpp//absl/base:nullability",
+        "@abseil-cpp//absl/strings:str_format",
+    ],
+)
+
+fe7_cc_test(
+    name = "diff_harness_test",
+    srcs = ["diff_harness_test.cc"],
+    deps = [
+        ":diff_harness",
+        ":dispatch",
+        ":gba_hal",
+        ":gba_ptr",
+        ":mgba_hal",
+        ":rom_loader",
+        ":trace_recorder",
+    ],
+)
+
 cc_binary(
     name = "fe7_headless",
     srcs = ["tas_runner.cc"],
@@ -121,11 +164,14 @@ cc_binary(
     deps = [
         ":dispatch",
         ":gba_hal",
+        ":gba_ptr",
         ":mgba_hal",
         ":rom_loader",
+        ":trace_recorder",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
+        "@abseil-cpp//absl/strings",
     ],
 )
 
