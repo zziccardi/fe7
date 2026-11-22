@@ -1,0 +1,39 @@
+# Enemy AI decision state, reachability, and combat/position scoring (Wave 3).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "ai",
+    srcs = ["ai.cc"],
+    hdrs = ["ai.h"],
+    deps = [
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_test",
+    srcs = ["ai_test.cc"],
+    deps = [
+        ":ai",
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//runtime:gba_ptr",
+    ],
+)

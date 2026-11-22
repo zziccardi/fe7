@@ -191,6 +191,7 @@ cc_binary(
         "//game:battle_hdr",
         "//game:register_all",
         "//game:unit_hdr",
+        "//game/ai:ai",
         "//game/battle:battle",
         "//game/battle:battle_exp",
         "//game/battle:battle_sim",
