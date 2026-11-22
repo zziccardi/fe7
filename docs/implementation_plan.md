@@ -15,7 +15,7 @@ Rather than attempting a "big bang" translation of ~3,500 functions before the g
 flowchart TD
     ROM["User-Provided ROM Path (Validated by SHA-1, Not Filename)"] --> MEM
     subgraph App["Native FE7 Executable (Google C++20 / Clang / SDL3)"]
-        GAME["Decompiled Game Code (src/game/*.cc)"] --> DISP["Dispatch Table (gba_addr -> NativeFn)"]
+        GAME["Decompiled Game Code (game/*.cc)"] --> DISP["Dispatch Table (gba_addr -> NativeFn)"]
         DISP -->|"Native C++ exists"| GAME
         DISP -->|"Not yet decompiled (Phases 1-3)"| FALLBACK["libmgba ARM7TDMI Fallback CPU"]
         GAME -->|"GbaPtr<T> (EWRAM/IWRAM/ROM)"| MEM["Virtual GBA Memory Bus (32-bit Address Space)"]
@@ -35,22 +35,23 @@ flowchart TD
 > **ROM Loading & Legal Boundary:** No copyrighted ROM bytes, extracted graphics, dialogue scripts, or music samples from *Fire Emblem 7* will be committed to the repository. The binary accepts **any ROM file path** via `--rom <path>` (or UI file picker/config) and validates **file size (16 MiB) + SHA-1 (`c735fdbb9e8abe19e0c6a44708df19acc962e204`)** rather than hardcoding a filename. All reference repos (`fireemblem8u`, `fireemblem6j`, `FireEmblem7J`, `fe7_us`) live in a gitignored `corpus/` directory for research and cross-matching only.
 
 > [!IMPORTANT]
-> **Google C++ Style Guide & Human-Gated Headers (`include/game/*.h`):**
-> - All C++ code follows the **Google C++ Style Guide** (`.h`/`.cc` extensions, `Google` `clang-format`, `#ifndef FE7_..._H_` guards, `-fno-exceptions`, `-fno-rtti`, `PascalCase` types/functions, `kConstantName` constants, `snake_case` struct fields/filenames).
-> - To prevent struct-layout drift across parallel AI agent batches, **all canonical POD structs (`Unit`, `Proc`, `BattleUnit`, `BmSt`, etc.) and shared headers in `include/game/*.h` are human-reviewed before merge**, locked with `static_assert(sizeof(...))` and `static_assert(offsetof(...))` checks matching FE7 US's exact RAM layout.
+> **Google C++ Style Guide & Human-Gated Headers (`game/*.h`):**
+> - All C++ code follows the **Google C++ Style Guide** (`.h`/`.cc` extensions, `Google` `clang-format`, `#ifndef FE7_..._H_` guards, `-fno-exceptions`, `-fno-rtti`, `PascalCase` types/functions, `kConstantName` constants, `gGlobalName` globals, `snake_case` struct fields/filenames).
+> - Headers, implementations, and unit tests are colocated in top-level `runtime/` and `game/` Bazel packages.
+> - To prevent struct-layout drift across parallel AI agent batches, **all canonical POD structs (`Unit`, `Proc`, `BattleUnit`, `BmSt`, etc.) and shared headers in `game/*.h` are human-reviewed before merge**, locked with `static_assert(sizeof(...))` and `static_assert(offsetof(...))` checks matching FE7 US's exact RAM layout.
 
 > [!WARNING]
-> **Strict Aliasing & Host Endianness Assumption:** `GbaPtr<T>` direct-maps into mGBA's little-endian EWRAM/IWRAM/ROM buffers for clean, readable C++ (`unit->cur_hp -= dmg;`). This requires compiling `src/game/` with `-fno-strict-aliasing`, assuming little-endian desktop targets (x86-64 / ARM64), and explicitly handling unaligned ROM struct reads via helper templates where needed.
+> **Strict Aliasing & Host Endianness Assumption:** `GbaPtr<T>` direct-maps into mGBA's little-endian EWRAM/IWRAM/ROM buffers for clean, readable C++ (`unit->cur_hp -= dmg;`). This requires compiling `game/` with `-fno-strict-aliasing`, assuming little-endian desktop targets (x86-64 / ARM64), and explicitly handling unaligned ROM struct reads via helper templates where needed.
 
 > [!NOTE]
-> **mGBA Dispatch Hook Maintenance:** Intercepting Thumb/ARM function calls inside `libmgba` requires a small (~150-line) patch on a pinned `libmgba` git submodule (hooking `ARMRunLoop` / Thumb branch targets + a clean re-entrant `CallFallback(addr, r0..r3)` bridge). Because the `libmgba` CPU fallback is deleted in Phase 4, this fork only needs to track a single pinned release tag.
+> **mGBA Dispatch Hook Maintenance:** Intercepting Thumb/ARM function calls inside `libmgba` requires a small (~150-line) patch on a pinned `libmgba` archive (hooking `ARMRunLoop` / Thumb branch targets + a clean re-entrant `CallFallback(addr, r0..r3)` bridge). Because the `libmgba` CPU fallback is deleted in Phase 4, this patch only needs to track a single pinned release tag.
 
 ---
 
 ## Resolved Decisions
 
 - **License:** **MIT** for all new `fe7` code (with pinned `third_party/mgba` patches remaining file-level MPL-2.0 until Phase 4/5 retirement).
-- **Build System:** **Bazel (Bzlmod)** with Clang + C++20, GoogleTest from BCR, strict `visibility` boundaries between `src/game/` and `src/runtime/`, and focused `BUILD.bazel` overlays for `libmgba` GBA core + `SDL3`.
+- **Build System:** **Bazel (Bzlmod)** with Clang + C++20, GoogleTest and Abseil (`abseil-cpp`) from BCR, strict `visibility` boundaries between `game/` and `runtime/`, and focused `BUILD.bazel` overlays for `libmgba` GBA core + `SDL3`.
 - **Repository:** New **private** GitHub repository named `fe7`.
 
 ---
@@ -77,8 +78,8 @@ Changes are organized into sequential phases.
 Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with per-target caching, strict `visibility` isolation, and automated CI linting for AI agents.
 
 #### [NEW] `MODULE.bazel`, `.bazelrc`, & `BUILD.bazel`
-- Pull `googletest`, `rules_cc`, and `hedron_compile_commands` (for `clang-tidy` / `clangd`) via Bzlmod; wrap `libmgba`'s GBA core and `SDL3` with clean `third_party/` `BUILD.bazel` overlays.
-- Require **C++20** and **Clang** (`--repo_env=CC=clang`, `--repo_env=CXX=clang++`) with `lld`.
+- Pull `abseil-cpp`, `googletest`, `platforms`, and `rules_cc` via Bzlmod; wrap `libmgba`'s GBA core and `SDL3` with clean `third_party/` `BUILD.bazel` overlays.
+- Require **C++20** and **Clang** (`--repo_env=CC=clang`, `--repo_env=CXX=clang++`).
 - Enforce Google C++ Style Guide compiler flags + strict warnings in `.bazelrc` and `fe7_game_cc_library` Starlark macro:
   ```python
   # bazel/fe7_rules.bzl
@@ -95,17 +96,17 @@ Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with pe
       "-Wno-unused-parameter",
   ]
   ```
-- Enforce architectural isolation at the build-graph level: `//src/game/...` targets may only depend on `//include/game/...` and `//include/runtime:gba_ptr` / `gba_hal` / `dispatch` (never `SDL3`, `ImGui`, or host OS headers).
+- Enforce architectural isolation at the build-graph level: `//game/...` targets may only depend on `//game/...` and `//runtime:{gba_ptr,gba_hal,dispatch}` (never `//runtime:mgba_hal`, `//runtime:rom_loader`, `SDL3`, `ImGui`, or host OS headers).
 - Bazel `.bazelrc` configs:
-  - `--config=asan`: `-O1 -g -fsanitize=address,undefined -DFE7_DEBUG_BOUNDS=1` (default for unit tests, `verify_fn.py`, and CI)
+  - `--config=asan`: `-O1 -g -fsanitize=address,undefined -fno-sanitize=vptr -DFE7_DEBUG_BOUNDS=1 --features=-layering_check` (default for unit tests, `verify_fn.py`, and CI)
   - `--config=release`: `-O2 -DNDEBUG`
   - `--config=headless`: strips SDL3 window/audio deps for 1,000+ FPS TAS/differential testing
 
 #### [NEW] `.clang-format`, `.clang-tidy`, & `tools/agent_rules.md`
 - `.clang-format`: `BasedOnStyle: Google`, `ColumnLimit: 100`.
 - **Strict Google "C-with-types" C++20 rules enforced by `clang-tidy` + `tools/check_agent_rules.py`:**
-  - **Allowed in `src/game/`:** Free functions, POD structs with `static_assert(sizeof/offsetof)`, `GbaPtr<T>`, `GbaSpan<T>`, `ProcAs<T>()`, scoped enums, `constexpr` constants, `kViewportWidth` / `kViewportHeight`.
-  - **Forbidden in `src/game/`:** Exceptions, RTTI, inheritance/`virtual` methods, heap-allocating STL containers (`std::vector`, `std::string`, `std::map`) during Phases 1–4, inline `asm`, raw `reinterpret_cast` from `uint32_t`, hardcoded `240`/`160` screen dimensions in camera/UI layout logic.
+  - **Allowed in `game/`:** Free functions, POD structs with `static_assert(sizeof/offsetof)`, `GbaPtr<T>`, `GbaSpan<T>`, `ProcAs<T>()`, scoped enums, `constexpr` constants (`kCamelCase`), globals (`gCamelCase`), `kViewportWidth` / `kViewportHeight`, and zero-cost Abseil header annotations (`absl_nonnull`, `absl_nullable`).
+  - **Forbidden in `game/`:** Exceptions, RTTI, inheritance/`virtual` methods, heap-allocating STL or Abseil containers (`std::vector`, `std::string`, `std::map`, `absl::flat_hash_map`, etc.) during Phases 1–4, inline `asm`, raw `reinterpret_cast` from `uint32_t`, hardcoded `240`/`160` screen dimensions in camera/UI layout logic.
 
 ---
 
@@ -113,11 +114,11 @@ Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with pe
 
 Provide compile-time type safety on GBA pointers, hash-based ROM validation, and seamless two-way calls between native C++20 functions and the `libmgba` ARM7TDMI fallback CPU.
 
-#### [NEW] `include/runtime/rom_loader.h` & `src/runtime/rom_loader.cc`
-- Accepts any file path (`--rom <path>`), verifies size (`16 * 1024 * 1024` bytes) and computes **SHA-1**, accepting `c735fdbb9e8abe19e0c6a44708df19acc962e204` (FE7 US `AE7E`).
+#### [NEW] `runtime/rom_loader.h` & `runtime/rom_loader.cc`
+- Accepts any file path (`--rom=<path>`), verifies size (`16 * 1024 * 1024` bytes) and computes **SHA-1**, accepting `c735fdbb9e8abe19e0c6a44708df19acc962e204` (FE7 US `AE7E`), returning `absl::Status` / `absl::StatusOr<RomImage>`.
 - Exposes a test-only `LoadSyntheticRom(std::span<const uint8_t>)` entry point for Phase 1 mock/unit tests so the full runtime + dispatch bridge is tested without requiring a retail ROM.
 
-#### [NEW] `include/runtime/gba_ptr.h`
+#### [NEW] `runtime/gba_ptr.h` & `runtime/gba_ptr.cc`
 Zero-cost typed wrapper around 32-bit GBA virtual addresses with debug bounds & alignment assertions:
 
 ```cpp
@@ -129,18 +130,20 @@ Zero-cost typed wrapper around 32-bit GBA virtual addresses with debug bounds & 
 #include <cstdint>
 #include <type_traits>
 
+#include "absl/base/nullability.h"
+
 namespace fe7 {
 
 struct GbaMemoryMap {
-  uint8_t* ewram = nullptr;  // 0x02000000 (256 KiB)
-  uint8_t* iwram = nullptr;  // 0x03000000 (32 KiB)
-  uint8_t* rom = nullptr;    // 0x08000000 (16 MiB)
+  uint8_t* absl_nullable ewram = nullptr;  // 0x02000000 (256 KiB)
+  uint8_t* absl_nullable iwram = nullptr;  // 0x03000000 (32 KiB)
+  uint8_t* absl_nullable rom = nullptr;    // 0x08000000 (16 MiB)
   size_t rom_size = 0;
 };
 
-extern GbaMemoryMap g_mem;
+extern GbaMemoryMap gMem;
 
-inline void* ResolveGbaRaw(uint32_t addr, size_t size, size_t align) {
+inline void* absl_nullable ResolveGbaRaw(uint32_t addr, size_t size, size_t align) {
   assert(addr != 0 && "Null GBA pointer dereference");
   assert((addr % align) == 0 && "Unaligned GBA pointer dereference");
   const uint32_t region = addr >> 24;
@@ -148,14 +151,14 @@ inline void* ResolveGbaRaw(uint32_t addr, size_t size, size_t align) {
   switch (region) {
     case 0x02:
       assert(offset + size <= 0x40000u && "EWRAM out of bounds");
-      return g_mem.ewram + offset;
+      return gMem.ewram + offset;
     case 0x03:
       assert(offset + size <= 0x8000u && "IWRAM out of bounds");
-      return g_mem.iwram + offset;
+      return gMem.iwram + offset;
     case 0x08:
     case 0x09:
-      assert((addr - 0x08000000u) + size <= g_mem.rom_size && "ROM out of bounds");
-      return g_mem.rom + (addr - 0x08000000u);
+      assert((addr - 0x08000000u) + size <= gMem.rom_size && "ROM out of bounds");
+      return gMem.rom + (addr - 0x08000000u);
     default:
       assert(false && "Use hal::Mmio* or hal::Vram* for IO/VRAM/OAM/PAL regions");
       return nullptr;
@@ -171,8 +174,8 @@ struct GbaPtr {
   constexpr explicit GbaPtr(uint32_t raw) : addr(raw) {}
   constexpr explicit operator bool() const { return addr != 0; }
 
-  T* get() const { return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T))); }
-  T* operator->() const { return get(); }
+  T* absl_nonnull get() const { return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T))); }
+  T* absl_nonnull operator->() const { return get(); }
   T& operator*() const { return *get(); }
   T& operator[](ptrdiff_t idx) const {
     return *GbaPtr<T>(addr + static_cast<uint32_t>(idx * static_cast<ptrdiff_t>(sizeof(T)))).get();
@@ -193,16 +196,16 @@ inline GbaPtr<SubProc> ProcAs(GbaPtr<BaseProc> p) {
 #endif  // FE7_RUNTIME_GBA_PTR_H_
 ```
 
-#### [NEW] `include/runtime/dispatch.h` & `src/runtime/dispatch.cc`
+#### [NEW] `runtime/dispatch.h` & `runtime/dispatch.cc`
 - O(1) lookup table mapping Thumb ROM halfword addresses (`0x08000000`–`0x08FFFFFF`) to registered native C++20 functions.
 - Handles **two-way interop**:
   - **Fallback → Native:** When mGBA's ARM/Thumb core branches (`BL`, `BX`, `BLX`, or `Proc` callback) to a registered address, mGBA invokes the native wrapper (`r0..r3` + stack), stores the return value in `r0`, and sets `PC = LR`.
   - **Native → Fallback:** `GbaCall(gba_addr, args...)` invokes native C++ if registered, or saves registers, sets a sentinel return address in `LR`, runs mGBA's ARM7TDMI core until `PC == kSentinelLr`, and returns `r0`.
-- Tracks per-address **fallback hit counters** (`--report-fallbacks`) for Phase 4 zero-fallback auditing.
+- Tracks per-address **fallback hit counters** (`absl::flat_hash_map`, `--report_fallbacks`) for Phase 4 zero-fallback auditing.
 
 ```mermaid
 sequenceDiagram
-    participant Native as Native C++ (src/game)
+    participant Native as Native C++ (game/)
     participant Disp as Dispatch Table
     participant CPU as libmgba ARM7TDMI Fallback
 
@@ -222,7 +225,7 @@ sequenceDiagram
 
 ### Component 3: Owned `GbaHal`, `libmgba` Bridge, SDL3/ImGui Frontend, & Mock Unit Tests (Phase 1)
 
-#### [NEW] `include/runtime/gba_hal.h` & `src/runtime/mgba_hal.cc`
+#### [NEW] `runtime/gba_hal.h` & `runtime/mgba_hal.cc`
 - Explicit hardware APIs:
   - `hal::MmioRead16` / `hal::MmioWrite16`, `hal::VramWrite` / `hal::PalWrite` / `hal::OamWrite`
   - `hal::DmaCopy(channel, src_addr, dst_addr, ctrl)`
@@ -232,15 +235,15 @@ sequenceDiagram
   - `constexpr int kViewportWidth = 240; constexpr int kViewportHeight = 160;`
   - `hal::VideoSubmitFrame()` and `hal::TextHookDrawGlyph()` seam points (no-ops during Phases 1–4 lockstep).
 
-#### [NEW] `src/runtime/sdl_frontend.cc` & `src/runtime/tas_runner.cc`
-- **SDL3 interactive frontend:** 60 Hz pacing, integer/aspect scaling, keyboard + SDL3 Gamepad input, `.sav` Flash/SRAM persistence, fast-forward toggle, instant save-state slots, and optional **ImGui debug overlay** (live RNG state, active `Proc` tree, hovered unit inspector, native vs. fallback execution % meter).
-- **Headless TAS runner (`fe7-headless`):** Runs `.vbm`/`.bk2`/JSON input movies without SDL video/audio, dumping per-frame RNG state, unit array checksums, and framebuffer SHA-256 checkpoints.
+#### [NEW] `runtime/sdl_frontend.cc` & `runtime/tas_runner.cc`
+- **SDL3 interactive frontend (`fe7_native`):** Uses `absl::flags`, 60 Hz pacing, integer/aspect scaling, keyboard + SDL3 Gamepad input, `.sav` Flash/SRAM persistence, fast-forward toggle, instant save-state slots, and optional **ImGui debug overlay** (live RNG state, active `Proc` tree, hovered unit inspector, native vs. fallback execution % meter).
+- **Headless TAS runner (`fe7_headless`):** Uses `absl::flags`, runs `.vbm`/`.bk2`/JSON input movies without SDL video/audio, dumping per-frame RNG state, unit array checksums, and framebuffer SHA-256 checkpoints.
 
-#### [NEW] `tests/runtime/` (Phase 1 Mock / Synthetic Unit Tests via GoogleTest)
+#### [NEW] Colocated `runtime/*_test.cc` (Phase 1 Mock / Synthetic Unit Tests via GoogleTest)
 Validates the entire Phase 1 runtime **without needing a retail FE7 ROM**:
-- `gba_ptr_test.cc`: EWRAM/IWRAM/ROM resolution, pointer arithmetic, `ProcAs<T>()`, death tests for null/unaligned/out-of-bounds/MMIO-region dereferences.
-- `rom_loader_test.cc`: SHA-1 verification (rejects bad hash or wrong size regardless of filename; accepts valid hash under arbitrary filenames).
-- `dispatch_roundtrip_test.cc`: Loads a **synthetic minimal GBA ROM** containing small hand-assembled Thumb functions (e.g., `ThumbAdd(a, b)`, `ThumbCallNativeHelper(x)`, `ThumbMutateEwramStruct(GbaPtr<MockUnit>)`) into `libmgba` and tests:
+- `runtime/gba_ptr_test.cc`: EWRAM/IWRAM/ROM resolution, pointer arithmetic, `ProcAs<T>()`, death tests for null/unaligned/out-of-bounds/MMIO-region dereferences.
+- `runtime/rom_loader_test.cc`: SHA-1 verification (rejects bad hash or wrong size regardless of filename; accepts valid hash under arbitrary filenames) via `absl::Status` / `absl::StatusOr`.
+- `runtime/dispatch_test.cc` & `runtime/mgba_hal_test.cc`: Loads a **synthetic minimal GBA ROM** containing small hand-assembled Thumb functions (e.g., `ThumbAdd(a, b)`, `ThumbCallNativeHelper(x)`, `ThumbMutateEwramStruct(GbaPtr<MockUnit>)`) into `libmgba` and tests:
   1. `Native → Fallback` execution + return value & EWRAM mutation.
   2. `Fallback → Native` dispatch interception + re-entrant `Native → Fallback → Native` nesting.
   3. Fallback hit-counter reporting.
@@ -270,11 +273,11 @@ Activated once you stage your SHA-1-validated FE7 US ROM locally:
 
 ### Component 5: Subsystem-by-Subsystem AI Decompilation (Phases 3–4)
 
-#### [NEW] `include/game/*.h` (Human-Gated Canonical Headers)
+#### [NEW] `game/*.h` (Human-Gated Canonical Headers)
 Google-style POD structs layout-locked to FE7 US RAM:
 
 ```cpp
-// include/game/unit.h
+// game/unit.h
 #ifndef FE7_GAME_UNIT_H_
 #define FE7_GAME_UNIT_H_
 
@@ -338,26 +341,26 @@ static_assert(offsetof(Unit, map_sprite_handle) == 0x3C, "Unit::map_sprite_handl
 #endif  // FE7_GAME_UNIT_H_
 ```
 
-#### [NEW] `src/game/` (Decompilation Waves)
+#### [NEW] `game/` (Decompilation Waves)
 
 | Wave | Directory | Scope | Strategy |
 | :--- | :--- | :--- | :--- |
-| **Wave 1** | `src/game/engine/` | `main`, `proc`, `rng`, `hardware`, `dma`, `oam`, `bg`, `irq` (~10%) | Port from `fireemblem8u` + verify FE7 US addresses. Unlocks native `Proc` loop early. |
-| **Wave 2** | `src/game/audio/` | `m4a` C driver + clean C++ `SoundMainRam` mixer + `libc`/BIOS wrappers (~10%) | Port `m4a` from `fireemblem8u`; replace hand-written ARM `SoundMainRAM` with clean C++ FIFO mixer (plus Phase 5 48 kHz seam); map `newlib`/`libgcc` to standard C++. |
-| **Wave 3** | `src/game/core/` | `bmunit`, `bmitem`, `bmmap`, `bmbattle`, `bmsave` (~25%) | High FE8U/FE6J overlap; locks down core gameplay structs and combat/RNG accuracy. |
-| **Wave 4** | `src/game/ai/` | `cp_*` enemy AI, phase flow, fog, weather, magic seal, tactician/ranks, supports (~15%) | Hybrid FE8U port + Ghidra MCP for FE7-exclusive mechanics. |
-| **Wave 5** | `src/game/ui/` | `talk`, `face`, `font`, menus, prep screen, shop, arena, world map, event interpreter, Lyn tutorials, Link Arena UI (~20%) | Use `kViewportWidth`/`kViewportHeight` and `hal::TextHookDrawGlyph` seams; stub low-level SIO via `hal::link`. |
-| **Wave 6** | `src/game/banim/` | `ekrbattle`, `efx`, spell scripts, Quintessence, Fire Dragon, CGs, sound room, credits (~20%) | Highly parallelizable state-machine procs across agent PR batches. |
+| **Wave 1** | `game/engine/` | `main`, `proc`, `rng`, `hardware`, `dma`, `oam`, `bg`, `irq` (~10%) | Port from `fireemblem8u` + verify FE7 US addresses. Unlocks native `Proc` loop early. |
+| **Wave 2** | `game/audio/` | `m4a` C driver + clean C++ `SoundMainRam` mixer + `libc`/BIOS wrappers (~10%) | Port `m4a` from `fireemblem8u`; replace hand-written ARM `SoundMainRAM` with clean C++ FIFO mixer (plus Phase 5 48 kHz seam); map `newlib`/`libgcc` to standard C++. |
+| **Wave 3** | `game/core/` | `bmunit`, `bmitem`, `bmmap`, `bmbattle`, `bmsave` (~25%) | High FE8U/FE6J overlap; locks down core gameplay structs and combat/RNG accuracy. |
+| **Wave 4** | `game/ai/` | `cp_*` enemy AI, phase flow, fog, weather, magic seal, tactician/ranks, supports (~15%) | Hybrid FE8U port + Ghidra MCP for FE7-exclusive mechanics. |
+| **Wave 5** | `game/ui/` | `talk`, `face`, `font`, menus, prep screen, shop, arena, world map, event interpreter, Lyn tutorials, Link Arena UI (~20%) | Use `kViewportWidth`/`kViewportHeight` and `hal::TextHookDrawGlyph` seams; stub low-level SIO via `hal::link`. |
+| **Wave 6** | `game/banim/` | `ekrbattle`, `efx`, spell scripts, Quintessence, Fire Dragon, CGs, sound room, credits (~20%) | Highly parallelizable state-machine procs across agent PR batches. |
 
 #### [DELETE] Fallback CPU Bridge (End of Phase 4)
-- Once `--report-fallbacks` reports **0 fallback calls** across the full-game TAS suite, remove the `libmgba` ARM7TDMI CPU fallback execution path from the build.
+- Once `--report_fallbacks` reports **0 fallback calls** across the full-game TAS suite, remove the `libmgba` ARM7TDMI CPU fallback execution path from the build.
 
 ---
 
 ### Component 6: Phase 5 Modern PC Enhancements (Post-1.0)
 
-1. **QoL & UX Layer (`src/runtime/qol/`):** Turn rewind (compressed ring buffer of EWRAM/IWRAM snapshots), enemy danger-zone overlay, mouse hover/click-to-move, fast-forward (2×/4×/uncapped), instant save states, controller remapping.
-2. **Widescreen (16:9) & HD Text (`src/runtime/renderer_hd/`):** Swap `libmgba`'s 240×160 PPU renderer behind `GbaHal` with an SDL3 GPU/OpenGL tile/sprite renderer expanding `kViewportWidth` to 16:9, and hook `hal::TextHookDrawGlyph()` to draw crisp native-resolution TTF glyphs over dialogue boxes and stat screens.
+1. **QoL & UX Layer (`runtime/qol/`):** Turn rewind (compressed ring buffer of EWRAM/IWRAM snapshots), enemy danger-zone overlay, mouse hover/click-to-move, fast-forward (2×/4×/uncapped), instant save states, controller remapping.
+2. **Widescreen (16:9) & HD Text (`runtime/renderer_hd/`):** Swap `libmgba`'s 240×160 PPU renderer behind `GbaHal` with an SDL3 GPU/OpenGL tile/sprite renderer expanding `kViewportWidth` to 16:9, and hook `hal::TextHookDrawGlyph()` to draw crisp native-resolution TTF glyphs over dialogue boxes and stat screens.
 
 ---
 
@@ -367,10 +370,9 @@ static_assert(offsetof(Unit, map_sprite_handle) == 0x3C, "Unit::map_sprite_handl
 
 1. **Phase 1 Mock Unit Test Suite (runs immediately with zero retail ROM):**
    ```bash
-   bazel test --config=asan //tests/runtime/...
-   bazel run @hedron_compile_commands//:refresh_all
-   python3 tools/check_agent_rules.py src/ include/
-   run-clang-tidy -p . src/
+   bazel test --config=asan //runtime/...
+   python3 tools/check_agent_rules.py
+   run-clang-tidy -p . runtime/ game/
    ```
    Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, and mock differential comparison.
 
@@ -382,23 +384,23 @@ static_assert(offsetof(Unit, map_sprite_handle) == 0x3C, "Unit::map_sprite_handl
 
 3. **Short Headless TAS Smoke Test (every PR, ~5s):**
    ```bash
-   bazel run --config=asan --config=headless //src/runtime:fe7_headless -- \
-     --rom <path_to_rom> \
-     --tas tests/tas/prologue_to_ch2.tas \
-     --verify-checkpoints tests/tas/golden_prologue_ch2.json
+   bazel run --config=asan --config=headless //runtime:fe7_headless -- \
+     --rom=<path_to_rom> \
+     --tas=tests/tas/prologue_to_ch2.tas \
+     --verify_checkpoints=tests/tas/golden_prologue_ch2.json
    ```
 
 4. **Full-Game Lockstep Suite (per milestone & Phase 4 gate):**
    ```bash
-   bazel run --config=release --config=headless //src/runtime:fe7_headless -- \
-     --rom <path_to_rom> \
-     --tas-suite tests/tas/full_game_suite.json \
-     --lockstep-mgba \
-     --assert-zero-fallbacks
+   bazel run --config=release --config=headless //runtime:fe7_headless -- \
+     --rom=<path_to_rom> \
+     --tas_suite=tests/tas/full_game_suite.json \
+     --lockstep_mgba \
+     --assert_zero_fallbacks
    ```
 
 ### Manual Verification
 
-- **Phase 1 Gate (once ROM is staged):** Launch `bazel run --config=release //src/runtime:fe7_native -- --rom <path_to_rom>` on desktop; verify SHA-1 acceptance/rejection messaging, 60 FPS video/audio, keyboard & gamepad input, Prologue gameplay, save/reload persistence, and ImGui overlay toggling.
+- **Phase 1 Gate (once ROM is staged):** Launch `bazel run --config=release //runtime:fe7_native -- --rom=<path_to_rom>` on desktop; verify SHA-1 acceptance/rejection messaging, 60 FPS video/audio, keyboard & gamepad input, Prologue gameplay, save/reload persistence, and ImGui overlay toggling.
 - **Wave Gates (Phases 3–4):** Spot-check subjective visual/audio fidelity (HBlank weather/water effects, battle animation transitions, `m4a` music/SFX mixing, Huffman dialogue boxes) alongside automated RNG/RAM lockstep checks.
 - **Phase 5 Gate:** Verify 16:9 map camera panning without tile-edge artifacts, crisp HD text legibility across dialogue/stat/battle-forecast menus, mouse clicking, danger-zone overlay accuracy, and turn rewind stability.
