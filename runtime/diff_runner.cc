@@ -20,6 +20,8 @@
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/register_all.h"
+#include "game/unit.h"
+#include "game/unit/unit.h"
 #include "runtime/diff_harness.h"
 #include "runtime/dispatch.h"
 #include "runtime/gba_hal.h"
@@ -38,6 +40,8 @@ enum class FuzzMode {
   kScalarRegs,
   kPtrU16x3InR0,
   kFormatTimePtrs,
+  kUnitPtrInR0,
+  kUnitCopyPtrs,
   kTracesOnly,
 };
 
@@ -49,7 +53,7 @@ struct VerifiedEntry {
 };
 
 constexpr VerifiedEntry kVerifiedFunctions[] = {
-    // RNG (0x08000BE0..0x08000EDC)
+    // Wave 1: RNG (0x08000BE0..0x08000EDC)
     {"NextRN", fe7::kAddrNextRn, true, FuzzMode::kScalarRegs},
     {"RandInit", fe7::kAddrRandInit, false, FuzzMode::kScalarRegs},
     {"RandSetSt", fe7::kAddrRandSetSt, false, FuzzMode::kPtrU16x3InR0},
@@ -60,12 +64,12 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"RandRoll2Rn", fe7::kAddrRandRoll2Rn, true, FuzzMode::kScalarRegs},
     {"RandInitB", fe7::kAddrRandInitB, false, FuzzMode::kScalarRegs},
     {"RandNextB", fe7::kAddrRandNextB, true, FuzzMode::kScalarRegs},
-    // Clock (0x08000F14..0x08000F80)
+    // Wave 1: Clock (0x08000F14..0x08000F80)
     {"GetGameTime", fe7::kAddrGetGameTime, true, FuzzMode::kScalarRegs},
     {"SetGameTime", fe7::kAddrSetGameTime, false, FuzzMode::kScalarRegs},
     {"IncGameTime", fe7::kAddrIncGameTime, false, FuzzMode::kScalarRegs},
     {"FormatTime", fe7::kAddrFormatTime, true, FuzzMode::kFormatTimePtrs},
-    // Proc (0x08004420..0x08004B84)
+    // Wave 1: Proc (0x08004420..0x08004B84)
     {"InitProcs", fe7::kAddrInitProcs, false, FuzzMode::kScalarRegs},
     {"SpawnProc", fe7::kAddrSpawnProc, true, FuzzMode::kTracesOnly},
     {"SpawnProcLocking", fe7::kAddrSpawnProcLocking, true,
@@ -84,6 +88,37 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"ProcSleepRepeat", fe7::kAddrProcSleepRepeat, false,
      FuzzMode::kTracesOnly},
     {"ProcRunScript", fe7::kAddrProcRunScript, false, FuzzMode::kTracesOnly},
+    // Wave 2: Unit & Stat Getters (0x08017508..0x08018D38)
+    {"ClearUnit", fe7::kAddrClearUnit, false, FuzzMode::kUnitPtrInR0},
+    {"CopyUnit", fe7::kAddrCopyUnit, false, FuzzMode::kUnitCopyPtrs},
+    {"GetUnitVision", fe7::kAddrGetUnitVision, true, FuzzMode::kUnitPtrInR0},
+    {"SetUnitStatus", fe7::kAddrSetUnitStatus, false, FuzzMode::kUnitPtrInR0},
+    {"SetUnitStatusExt", fe7::kAddrSetUnitStatusExt, false,
+     FuzzMode::kUnitPtrInR0},
+    {"GetUnitItemCount", fe7::kAddrGetUnitItemCount, true,
+     FuzzMode::kUnitPtrInR0},
+    {"GetUnitByPid", fe7::kAddrGetUnitByPid, true, FuzzMode::kScalarRegs},
+    {"GetUnitAid", fe7::kAddrGetUnitAid, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitMagRange", fe7::kAddrGetUnitMagRange, true,
+     FuzzMode::kUnitPtrInR0},
+    {"UnitKnowsMagic", fe7::kAddrUnitKnowsMagic, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitCurrentHp", fe7::kAddrGetUnitCurrentHp, true,
+     FuzzMode::kUnitPtrInR0},
+    {"GetUnitMaxHp", fe7::kAddrGetUnitMaxHp, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitPower", fe7::kAddrGetUnitPower, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitSkill", fe7::kAddrGetUnitSkill, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitSpeed", fe7::kAddrGetUnitSpeed, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitDefense", fe7::kAddrGetUnitDefense, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitResistance", fe7::kAddrGetUnitResistance, true,
+     FuzzMode::kUnitPtrInR0},
+    {"GetUnitLuck", fe7::kAddrGetUnitLuck, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitFid", fe7::kAddrGetUnitFid, true, FuzzMode::kUnitPtrInR0},
+    {"GetUnitMiniFid", fe7::kAddrGetUnitMiniFid, true, FuzzMode::kUnitPtrInR0},
+    {"SetUnitHp", fe7::kAddrSetUnitHp, false, FuzzMode::kUnitPtrInR0},
+    {"AddUnitHp", fe7::kAddrAddUnitHp, false, FuzzMode::kUnitPtrInR0},
+    {"GetUnit", fe7::kAddrGetUnit, true, FuzzMode::kScalarRegs},
+    {"GetJobInfo", fe7::kAddrGetJobInfo, true, FuzzMode::kScalarRegs},
+    {"GetPersonInfo", fe7::kAddrGetPersonInfo, true, FuzzMode::kScalarRegs},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -135,6 +170,75 @@ std::vector<fe7::TraceRecord> MakeFormatTimeTraces(uint32_t gba_addr,
     rec.regs[1] = 0x02000000u + offset;
     rec.regs[2] = 0x02000000u + offset + 2u;
     rec.regs[3] = 0x02000000u + offset + 4u;
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+// Populates a realistic Unit in `ewram` at `offset` referencing real FE7 US
+// ROM PInfo/JInfo entries so stat, item, and attribute getters exercise real
+// ROM data tables.
+void PopulateSyntheticUnit(std::vector<uint8_t>& ewram, uint32_t offset,
+                           uint32_t& rng) {
+  fe7::Unit unit{};
+  const int pid = static_cast<int>(1u + (NextXorshift(rng) % 40u));
+  const int jid = static_cast<int>(1u + (NextXorshift(rng) % 40u));
+  unit.pinfo = fe7::GetPersonInfo(pid);
+  unit.jinfo = fe7::GetJobInfo(jid);
+  unit.id = static_cast<int8_t>(1u + (NextXorshift(rng) % 50u));
+  unit.flags = (NextXorshift(rng) & 1u) != 0u ? fe7::kUnitFlagRescuing : 0u;
+  unit.max_hp = static_cast<int8_t>(15u + (NextXorshift(rng) % 45u));
+  unit.hp = static_cast<int8_t>(NextXorshift(rng) % 65u);
+  unit.pow = static_cast<int8_t>(NextXorshift(rng) % 30u);
+  unit.skl = static_cast<int8_t>(NextXorshift(rng) % 30u);
+  unit.spd = static_cast<int8_t>(NextXorshift(rng) % 30u);
+  unit.def = static_cast<int8_t>(NextXorshift(rng) % 25u);
+  unit.res = static_cast<int8_t>(NextXorshift(rng) % 25u);
+  unit.lck = static_cast<int8_t>(NextXorshift(rng) % 30u);
+  unit.bonus_con = static_cast<int8_t>(NextXorshift(rng) % 5u);
+  unit.torch = static_cast<uint8_t>(NextXorshift(rng) & 0x7u);
+  unit.barrier = static_cast<uint8_t>(NextXorshift(rng) & 0x7u);
+  // Give a mix of empty inventories and valid FE7 weapon IDs (1..0x4F) with
+  // weapon ranks so GetUnitEquippedWeapon + GetItem*Bonus run real ROM paths.
+  for (int i = 0; i < fe7::kUnitItemCount; ++i) {
+    if ((NextXorshift(rng) & 1u) != 0u) {
+      const uint16_t iid =
+          static_cast<uint16_t>(1u + (NextXorshift(rng) % 0x4Fu));
+      unit.items[i] = static_cast<uint16_t>(iid | (0x14u << 8));
+    }
+  }
+  for (int i = 0; i < fe7::kUnitWexpCount; ++i) {
+    unit.wexp[i] =
+        static_cast<uint8_t>((NextXorshift(rng) & 1u) != 0u ? 0xFB : 0);
+  }
+  std::memcpy(ewram.data() + offset, &unit, sizeof(fe7::Unit));
+}
+
+std::vector<fe7::TraceRecord> MakeUnitTraces(uint32_t gba_addr, size_t count,
+                                             bool two_units) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x0A170001u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr uint32_t kUnitAOffset = 0x2000u;
+    constexpr uint32_t kUnitBOffset = 0x2080u;
+    PopulateSyntheticUnit(rec.ewram, kUnitAOffset, rng);
+    rec.ewram[fe7::kChapterVisionAddr - 0x02000000u] =
+        static_cast<uint8_t>(NextXorshift(rng) % 8u);
+    rec.regs[0] = 0x02000000u + kUnitAOffset;
+    if (two_units) {
+      PopulateSyntheticUnit(rec.ewram, kUnitBOffset, rng);
+      rec.regs[1] = 0x02000000u + kUnitBOffset;
+    } else {
+      rec.regs[1] = static_cast<uint32_t>(
+          static_cast<int32_t>(NextXorshift(rng) % 80u) - 40);
+      rec.regs[2] = NextXorshift(rng) & 0xFu;
+    }
     out.push_back(std::move(rec));
   }
   return out;
@@ -212,6 +316,18 @@ int main(int argc, char** argv) {
       case FuzzMode::kFormatTimePtrs: {
         auto fmt_traces = MakeFormatTimeTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, fmt_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kUnitPtrInR0: {
+        auto unit_traces = MakeUnitTraces(entry.gba_addr, fuzz_iters, false);
+        res = fe7::DiffFunction(entry.gba_addr, fn, unit_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kUnitCopyPtrs: {
+        auto unit_traces = MakeUnitTraces(entry.gba_addr, fuzz_iters, true);
+        res = fe7::DiffFunction(entry.gba_addr, fn, unit_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }
