@@ -1,5 +1,6 @@
 #include "game/register_all.h"
 
+#include "game/action/action.h"
 #include "game/ai/ai.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
@@ -30,6 +31,7 @@ void RegisterAllNativeFunctions() {
   RegisterPhaseFunctions();
   RegisterSupportFunctions();
   RegisterAiFunctions();
+  RegisterActionFunctions();
 }
 
 }  // namespace fe7

@@ -16,6 +16,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
+#include "game/action/action.h"
 #include "game/ai/ai.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
@@ -64,6 +65,7 @@ enum class FuzzMode {
   kSupportState,
   kAiState,
   kTrapState,
+  kActionState,
   kTracesOnly,
 };
 
@@ -567,6 +569,52 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"AddLightRune", fe7::kAddrAddLightRune, true, FuzzMode::kTrapState},
     {"ApplyLightRuneTerrainAlt", fe7::kAddrApplyLightRuneTerrainAlt, false,
      FuzzMode::kTrapState},
+    // Tactical Layer 2: Unit Actions, Rescue/Drop, Autolevel & Boosters (26).
+    {"FindUnitItemSlot", fe7::kAddrFindUnitItemSlot, true,
+     FuzzMode::kActionState},
+    {"UnitHasItem", fe7::kAddrUnitHasItem, true, FuzzMode::kActionState},
+    {"UnitInitStats", fe7::kAddrUnitInitStats, false, FuzzMode::kActionState},
+    {"UnitApplyAltPinfo", fe7::kAddrUnitApplyAltPinfo, false,
+     FuzzMode::kActionState},
+    {"UnitInitSupports", fe7::kAddrUnitInitSupports, false,
+     FuzzMode::kActionState},
+    {"UnitAutolevelWeaponExp", fe7::kAddrUnitAutolevelWeaponExp, false,
+     FuzzMode::kActionState},
+    {"UnitAutolevelCore", fe7::kAddrUnitAutolevelCore, false,
+     FuzzMode::kActionState},
+    {"UnitApplyBonusLevels", fe7::kAddrUnitApplyBonusLevels, false,
+     FuzzMode::kActionState},
+    {"UnitAutolevelPlayer", fe7::kAddrUnitAutolevelPlayer, false,
+     FuzzMode::kActionState},
+    {"GetUnitByPidInFaction", fe7::kAddrGetUnitByPidInFaction, true,
+     FuzzMode::kActionState},
+    {"CanUnitCarry", fe7::kAddrCanUnitCarry, true, FuzzMode::kActionState},
+    {"UnitRescue", fe7::kAddrUnitRescue, false, FuzzMode::kActionState},
+    {"UnitDropRescue", fe7::kAddrUnitDropRescue, false, FuzzMode::kActionState},
+    {"UnitGiveRescue", fe7::kAddrUnitGiveRescue, false, FuzzMode::kActionState},
+    {"KillUnit", fe7::kAddrKillUnit, false, FuzzMode::kActionState},
+    {"UnitSyncMovement", fe7::kAddrUnitSyncMovement, false,
+     FuzzMode::kActionState},
+    {"UnitBeginAction", fe7::kAddrUnitBeginAction, false,
+     FuzzMode::kActionState},
+    {"UnitBeginReMoveAction", fe7::kAddrUnitBeginReMoveAction, false,
+     FuzzMode::kActionState},
+    {"UnitUpdateUsedItem", fe7::kAddrUnitUpdateUsedItem, false,
+     FuzzMode::kActionState},
+    {"UnitRevealAtPosition", fe7::kAddrUnitRevealAtPosition, false,
+     FuzzMode::kActionState},
+    {"GetUnitKeyItemSlotForTerrain", fe7::kAddrGetUnitKeyItemSlotForTerrain,
+     true, FuzzMode::kActionState},
+    {"GetAidIconFromAttributes", fe7::kAddrGetAidIconFromAttributes, true,
+     FuzzMode::kScalarRegs},
+    {"GetUnitUseFlags", fe7::kAddrGetUnitUseFlags, true,
+     FuzzMode::kActionState},
+    {"GetEnemyFactionUseFlags", fe7::kAddrGetEnemyFactionUseFlags, true,
+     FuzzMode::kActionState},
+    {"GetUnitLastItem", fe7::kAddrGetUnitLastItem, true,
+     FuzzMode::kActionState},
+    {"ApplyItemStatBoost", fe7::kAddrApplyItemStatBoost, true,
+     FuzzMode::kActionState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -1954,6 +2002,158 @@ std::vector<fe7::TraceRecord> MakeTrapTraces(uint32_t gba_addr, size_t count) {
   return out;
 }
 
+// Synthesizes valid units, rescue partners, traps, gMapUnit, and stat boosters
+// for all 26 Unit Action functions.
+std::vector<fe7::TraceRecord> MakeActionTraces(uint32_t gba_addr,
+                                               size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x4143544Eu ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::kEwramSize, 0u);
+    rec.iwram.assign(fe7::kIwramSize, 0u);
+    std::memcpy(rec.iwram.data(), fe7::gMem.iwram, fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+    InitSyntheticMapBuffer(rec.ewram, 0x11000u, fe7::kMapUnitAddr, kW, kH,
+                           0x00u);
+
+    // Populate Blue 1, Blue 2, Blue 3, and Red 0x81 in EWRAM.
+    const uint32_t u1_off = fe7::GetUnit(1).addr - 0x02000000u;
+    const uint32_t u2_off = fe7::GetUnit(2).addr - 0x02000000u;
+    const uint32_t u3_off = fe7::GetUnit(3).addr - 0x02000000u;
+    const uint32_t e1_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, u1_off, rng);
+    PopulateSyntheticUnit(rec.ewram, u2_off, rng);
+    PopulateSyntheticUnit(rec.ewram, u3_off, rng);
+    PopulateSyntheticUnit(rec.ewram, e1_off, rng);
+
+    fe7::Unit u1{};
+    std::memcpy(&u1, rec.ewram.data() + u1_off, sizeof(u1));
+    u1.id = 1;
+    u1.x = static_cast<int8_t>(NextXorshift(rng) % kW);
+    u1.y = static_cast<int8_t>(NextXorshift(rng) % kH);
+    u1.level = static_cast<int8_t>(1 + (NextXorshift(rng) % 10u));
+    u1.rescue = 2u;  // Carrying Blue 2 for Drop/Give/Sync tests.
+    u1.ballista_trap = 0u;
+    if (gba_addr == fe7::kAddrApplyItemStatBoost) {
+      static constexpr uint8_t kBoosters[10] = {0x5A, 0x5B, 0x5C, 0x5D, 0x5E,
+                                                0x5F, 0x60, 0x61, 0x62, 0x88};
+      u1.items[0] =
+          static_cast<uint16_t>((1u << 8) | kBoosters[NextXorshift(rng) % 10u]);
+    } else if (u1.items[0] == 0u) {
+      u1.items[0] = 0x1401u;
+    }
+    std::memcpy(rec.ewram.data() + u1_off, &u1, sizeof(u1));
+
+    fe7::Unit u2{};
+    std::memcpy(&u2, rec.ewram.data() + u2_off, sizeof(u2));
+    u2.id = 2;
+    u2.rescue = 1u;
+    std::memcpy(rec.ewram.data() + u2_off, &u2, sizeof(u2));
+
+    fe7::Unit u3{};
+    std::memcpy(&u3, rec.ewram.data() + u3_off, sizeof(u3));
+    u3.id = 3;
+    std::memcpy(rec.ewram.data() + u3_off, &u3, sizeof(u3));
+
+    fe7::Unit e1{};
+    std::memcpy(&e1, rec.ewram.data() + e1_off, sizeof(e1));
+    e1.id = static_cast<int8_t>(0x81);
+    std::memcpy(rec.ewram.data() + e1_off, &e1, sizeof(e1));
+
+    rec.ewram[(fe7::kActionPlayStatusAddr - 0x02000000u) + 0x0Fu] =
+        (NextXorshift(rng) & 1u) ? fe7::kFactionBlue : fe7::kFactionRed;
+
+    constexpr uint32_t kUdefOff = 0x18300u;
+    rec.ewram[kUdefOff + 3u] = static_cast<uint8_t>(NextXorshift(rng) & 1u);
+
+    const uint32_t u1_addr = 0x02000000u + u1_off;
+    const uint32_t u2_addr = 0x02000000u + u2_off;
+    const uint32_t u3_addr = 0x02000000u + u3_off;
+    const uint32_t e1_addr = 0x02000000u + e1_off;
+
+    switch (gba_addr) {
+      case fe7::kAddrFindUnitItemSlot:
+      case fe7::kAddrUnitHasItem:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = (NextXorshift(rng) & 1u)
+                          ? (u1.items[0] & 0xFFu)
+                          : (1u + (NextXorshift(rng) % 0x80u));
+        break;
+      case fe7::kAddrUnitInitStats:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = u1.pinfo.addr;
+        break;
+      case fe7::kAddrUnitApplyAltPinfo:
+      case fe7::kAddrUnitInitSupports:
+      case fe7::kAddrUnitAutolevelPlayer:
+      case fe7::kAddrUnitSyncMovement:
+      case fe7::kAddrUnitBeginAction:
+      case fe7::kAddrUnitBeginReMoveAction:
+      case fe7::kAddrGetUnitUseFlags:
+      case fe7::kAddrGetUnitLastItem:
+        rec.regs[0] = u1_addr;
+        break;
+      case fe7::kAddrKillUnit:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? u1_addr : e1_addr;
+        break;
+      case fe7::kAddrUnitAutolevelWeaponExp:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = 0x02000000u + kUdefOff;
+        break;
+      case fe7::kAddrUnitAutolevelCore:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = u1.jinfo->id;
+        rec.regs[2] = NextXorshift(rng) % 6u;
+        break;
+      case fe7::kAddrUnitApplyBonusLevels:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = NextXorshift(rng) % 5u;
+        break;
+      case fe7::kAddrGetUnitByPidInFaction:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? u1.pinfo->id : 0x30u;
+        rec.regs[1] = fe7::kFactionBlue;
+        break;
+      case fe7::kAddrCanUnitCarry:
+      case fe7::kAddrUnitRescue:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = u2_addr;
+        break;
+      case fe7::kAddrUnitGiveRescue:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = u3_addr;
+        break;
+      case fe7::kAddrUnitDropRescue:
+      case fe7::kAddrUnitRevealAtPosition:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = NextXorshift(rng) % kW;
+        rec.regs[2] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrUnitUpdateUsedItem:
+      case fe7::kAddrApplyItemStatBoost:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = 0u;
+        break;
+      case fe7::kAddrGetUnitKeyItemSlotForTerrain:
+        rec.regs[0] = u1_addr;
+        rec.regs[1] = (NextXorshift(rng) & 1u) ? 0x1Eu : 0x21u;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2101,6 +2301,12 @@ int main(int argc, char** argv) {
       case FuzzMode::kTrapState: {
         auto trap_traces = MakeTrapTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, trap_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kActionState: {
+        auto act_traces = MakeActionTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, act_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }
