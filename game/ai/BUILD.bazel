@@ -39,3 +39,39 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ai_decide",
+    srcs = ["ai_decide.cc"],
+    hdrs = ["ai_decide.h"],
+    deps = [
+        ":ai",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_decide_test",
+    srcs = ["ai_decide_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_decide",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)

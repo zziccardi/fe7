@@ -18,6 +18,7 @@
 #include "absl/flags/usage.h"
 #include "game/action/action.h"
 #include "game/ai/ai.h"
+#include "game/ai/ai_decide.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
@@ -66,6 +67,7 @@ enum class FuzzMode {
   kAiState,
   kTrapState,
   kActionState,
+  kAiDecideState,
   kTracesOnly,
 };
 
@@ -615,6 +617,54 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kActionState},
     {"ApplyItemStatBoost", fe7::kAddrApplyItemStatBoost, true,
      FuzzMode::kActionState},
+    // Top-Level Enemy AI (item ranking, recovery, range-counting, dance/play).
+    {"AiEquipBestItem", fe7::kAddrAiEquipBestItem, false,
+     FuzzMode::kAiDecideState},
+    {"AiCompare", fe7::kAddrAiCompare, true, FuzzMode::kAiDecideState},
+    {"AiTryFindNearestUnitOfClass", fe7::kAddrAiTryFindNearestUnitOfClass, true,
+     FuzzMode::kAiDecideState},
+    {"AiTryMoveRandomly", fe7::kAddrAiTryMoveRandomly, false,
+     FuzzMode::kAiDecideState},
+    {"AiGetMoveCostAt", fe7::kAddrAiGetMoveCostAt, true,
+     FuzzMode::kAiDecideState},
+    {"AiCountUnitsInRange", fe7::kAddrAiCountUnitsInRange, true,
+     FuzzMode::kAiDecideState},
+    {"AiCountEnemiesInRange", fe7::kAddrAiCountEnemiesInRange, true,
+     FuzzMode::kAiDecideState},
+    {"AiCountAlliesInRange", fe7::kAddrAiCountAlliesInRange, true,
+     FuzzMode::kAiDecideState},
+    {"AiCountUnitsNearby", fe7::kAddrAiCountUnitsNearby, true,
+     FuzzMode::kAiDecideState},
+    {"AiCountEnemiesNearby", fe7::kAddrAiCountEnemiesNearby, true,
+     FuzzMode::kAiDecideState},
+    {"AiCountAlliesNearby", fe7::kAddrAiCountAlliesNearby, true,
+     FuzzMode::kAiDecideState},
+    {"AiIsWithinDangerThreshold", fe7::kAddrAiIsWithinDangerThreshold, true,
+     FuzzMode::kAiDecideState},
+    {"AiUpdateFactionRecovery", fe7::kAddrAiUpdateFactionRecovery, false,
+     FuzzMode::kAiDecideState},
+    {"AiUpdateUnitRecoveryMode", fe7::kAddrAiUpdateUnitRecoveryMode, true,
+     FuzzMode::kAiDecideState},
+    {"AiGetClosestEscapePoint", fe7::kAddrAiGetClosestEscapePoint, true,
+     FuzzMode::kAiDecideState},
+    {"AiCanEquipBestItem", fe7::kAddrAiCanEquipBestItem, true,
+     FuzzMode::kAiDecideState},
+    {"AiRankUnitItems", fe7::kAddrAiRankUnitItems, true,
+     FuzzMode::kAiDecideState},
+    {"AiComputeEnemyThreatAtTile", fe7::kAddrAiComputeEnemyThreatAtTile, false,
+     FuzzMode::kTracesOnly},
+    {"AiEquipBestItemWithMask", fe7::kAddrAiEquipBestItemWithMask, false,
+     FuzzMode::kAiDecideState},
+    {"AiChooseBestItemToEquip", fe7::kAddrAiChooseBestItemToEquip, false,
+     FuzzMode::kAiDecideState},
+    {"AiUpdateUnitSpecialStaffFlags", fe7::kAddrAiUpdateUnitSpecialStaffFlags,
+     false, FuzzMode::kAiDecideState},
+    {"AiIsWithinMoveBirdsEye", fe7::kAddrAiIsWithinMoveBirdsEye, true,
+     FuzzMode::kAiDecideState},
+    {"AiGetUnitAttackPower", fe7::kAddrAiGetUnitAttackPower, true,
+     FuzzMode::kAiDecideState},
+    {"AiTryDanceOrPlay", fe7::kAddrAiTryDanceOrPlay, true,
+     FuzzMode::kAiDecideState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -2154,6 +2204,199 @@ std::vector<fe7::TraceRecord> MakeActionTraces(uint32_t gba_addr,
   return out;
 }
 
+// Synthesizes valid 8x8 padded maps (with 4-tile padding on gMapUnit for
+// nearby-offset table scans), live units, AI decision state, play-status
+// faction/chapter fields, and scratch buffers for top-level Enemy AI functions.
+std::vector<fe7::TraceRecord> MakeAiDecideTraces(uint32_t gba_addr,
+                                                 size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0xA1DEC1DEu ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kScratchOff = 0x16000u;
+    const uint32_t scratch_addr = 0x02000000u + kScratchOff;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x01u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+
+    const uint32_t rows = kH + 4u;
+    const uint32_t stride = kW + 2u;
+    const uint32_t unit_rows = kH + 8u;
+    const uint32_t unit_stride = kW + 8u;
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    const uint32_t unit_tiles = kUnitMapBufOff + unit_rows * 4u;
+    const uint32_t mov_tiles = kMovMapBufOff + rows * 4u;
+    const uint32_t rng_tiles = kRngMapBufOff + rows * 4u;
+    const uint32_t other_tiles = kOtherMapBufOff + rows * 4u;
+
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        const uint32_t toff = static_cast<uint32_t>(y + 2) * stride +
+                              static_cast<uint32_t>(x + 1);
+        const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                               static_cast<uint32_t>(x + 4);
+        rec.ewram[terrain_tiles + toff] =
+            static_cast<uint8_t>(1u + (NextXorshift(rng) % 2u));
+        const uint32_t u = NextXorshift(rng) % 10u;
+        if (u == 0u) rec.ewram[unit_tiles + utoff] = 0x01u;
+        if (u == 1u) rec.ewram[unit_tiles + utoff] = 0x81u;
+        if (u == 2u) rec.ewram[unit_tiles + utoff] = 0x82u;
+        rec.ewram[mov_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 10u)
+                : 0xFFu;
+        rec.ewram[rng_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) & 0xFFu)
+                : 0u;
+        rec.ewram[other_tiles + toff] =
+            static_cast<uint8_t>(NextXorshift(rng) & 0xFFu);
+      }
+    }
+
+    // Populate three live units: enemy 0x81 (active), enemy 0x82 (ally), and
+    // player 0x01 (non-allied).
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_a2_off = fe7::GetUnit(0x82).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_a2_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    auto fixup_unit = [&](uint32_t off, int8_t uid) {
+      fe7::Unit u{};
+      std::memcpy(&u, rec.ewram.data() + off, sizeof(u));
+      u.id = uid;
+      u.x = static_cast<int8_t>(1 + (NextXorshift(rng) % (kW - 2)));
+      u.y = static_cast<int8_t>(1 + (NextXorshift(rng) % (kH - 2)));
+      if (u.max_hp <= 0) u.max_hp = 20;
+      u.hp = static_cast<int8_t>(
+          1 + (NextXorshift(rng) % static_cast<uint32_t>(u.max_hp)));
+      u.ai_config = static_cast<uint16_t>(NextXorshift(rng) & 3u);
+      u.ai_flags = static_cast<uint8_t>(NextXorshift(rng) & 0x1Fu);
+      std::memcpy(rec.ewram.data() + off, &u, sizeof(u));
+    };
+    fixup_unit(unit_a_off, static_cast<int8_t>(0x81));
+    fixup_unit(unit_a2_off, static_cast<int8_t>(0x82));
+    fixup_unit(unit_b_off, 0x01);
+
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t ua_addr = 0x02000000u + unit_a_off;
+    const uint32_t ub_addr = 0x02000000u + unit_b_off;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+
+    // Seed gAiDecision with an in-bounds move coordinate.
+    fe7::AiDecision dec{};
+    dec.action_id = static_cast<uint8_t>(NextXorshift(rng) % 4u);
+    dec.x_move = static_cast<uint8_t>(NextXorshift(rng) % kW);
+    dec.y_move = static_cast<uint8_t>(NextXorshift(rng) % kH);
+    std::memcpy(rec.ewram.data() + (fe7::kAiDecisionAddr - 0x02000000u), &dec,
+                sizeof(dec));
+
+    // Seed gPlayStatus chapter (0 or 8) and faction (0x00, 0x40, or 0x80).
+    static constexpr uint8_t kFactions[3] = {0x00u, 0x40u, 0x80u};
+    rec.ewram[fe7::kAiPlayStatusAddr + 0x0Eu - 0x02000000u] =
+        (NextXorshift(rng) & 1u) ? 8u : 0u;
+    rec.ewram[fe7::kAiPlayStatusAddr + 0x0Fu - 0x02000000u] =
+        kFactions[NextXorshift(rng) % 3u];
+
+    // Seed scratch buffer with plausible item ranks / comparison byte.
+    for (int s = 0; s < 5; ++s) {
+      const uint16_t rk = static_cast<uint16_t>(
+          ((NextXorshift(rng) % 15u) << 8) | (NextXorshift(rng) & 0x0Fu));
+      std::memcpy(rec.ewram.data() + kScratchOff + static_cast<uint32_t>(s) * 2,
+                  &rk, sizeof(rk));
+    }
+
+    switch (gba_addr) {
+      case fe7::kAddrAiCompare:
+        rec.regs[0] = scratch_addr;
+        rec.regs[1] = NextXorshift(rng) % 7u;
+        rec.regs[2] = NextXorshift(rng) & 0xFFu;
+        break;
+      case fe7::kAddrAiTryFindNearestUnitOfClass:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 0x40u);
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiGetMoveCostAt:
+      case fe7::kAddrAiCountUnitsNearby:
+      case fe7::kAddrAiCountEnemiesNearby:
+      case fe7::kAddrAiCountAlliesNearby:
+      case fe7::kAddrAiTryDanceOrPlay:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrAiIsWithinDangerThreshold:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        rec.regs[2] = NextXorshift(rng) & 0xFFu;
+        break;
+      case fe7::kAddrAiUpdateUnitRecoveryMode:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? ua_addr : ub_addr;
+        break;
+      case fe7::kAddrAiRankUnitItems:
+        rec.regs[0] = scratch_addr;
+        break;
+      case fe7::kAddrAiEquipBestItemWithMask:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 3u);
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiChooseBestItemToEquip:
+        rec.regs[0] = NextXorshift(rng) % 40u;
+        rec.regs[1] = NextXorshift(rng) % 40u;
+        rec.regs[2] = rec.regs[0] + rec.regs[1];
+        rec.regs[3] = scratch_addr;
+        break;
+      case fe7::kAddrAiUpdateUnitSpecialStaffFlags: {
+        const uint32_t iid = 0x48u + (NextXorshift(rng) % 0x12u);
+        rec.regs[0] = iid | ((NextXorshift(rng) % 20u) << 8);
+        break;
+      }
+      case fe7::kAddrAiIsWithinMoveBirdsEye:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? ua_addr : ub_addr;
+        rec.regs[1] = NextXorshift(rng) % kW;
+        rec.regs[2] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrAiGetUnitAttackPower:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? ua_addr : ub_addr;
+        rec.regs[1] = scratch_addr;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2308,6 +2551,12 @@ int main(int argc, char** argv) {
         auto act_traces = MakeActionTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, act_traces, 0, 0xFE700001u,
                                 opts);
+        break;
+      }
+      case FuzzMode::kAiDecideState: {
+        auto decide_traces = MakeAiDecideTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, decide_traces, 0,
+                                0xFE700001u, opts);
         break;
       }
       case FuzzMode::kTracesOnly:
