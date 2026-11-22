@@ -1,0 +1,37 @@
+# Battle stat computation and weapon triangle formulas (Wave 2).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "battle",
+    srcs = ["battle.cc"],
+    hdrs = ["battle.h"],
+    deps = [
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "battle_test",
+    srcs = ["battle_test.cc"],
+    deps = [
+        ":battle",
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)

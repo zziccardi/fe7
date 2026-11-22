@@ -1,5 +1,6 @@
 #include "game/register_all.h"
 
+#include "game/battle/battle.h"
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
@@ -14,6 +15,7 @@ void RegisterAllNativeFunctions() {
   RegisterProcFunctions();
   RegisterUnitFunctions();
   RegisterItemFunctions();
+  RegisterBattleFunctions();
 }
 
 }  // namespace fe7

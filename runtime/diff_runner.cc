@@ -16,6 +16,8 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
+#include "game/battle.h"
+#include "game/battle/battle.h"
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
@@ -47,6 +49,7 @@ enum class FuzzMode {
   kUnitAndSlot,
   kItemAndUnit,
   kValidItemInR0,
+  kBattlePair,
   kTracesOnly,
 };
 
@@ -187,6 +190,46 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"GetItemWeaponExp", fe7::kAddrGetItemWeaponExp, true,
      FuzzMode::kScalarRegs},
     {"GetIInfo", fe7::kAddrGetIInfo, true, FuzzMode::kScalarRegs},
+    // Wave 2: Battle Formulas (0x080289B0..0x08028EEC, 0x0802A120..0x0802A170)
+    {"ComputeBattleUnitStats", fe7::kAddrComputeBattleUnitStats, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitEffectiveStats",
+     fe7::kAddrComputeBattleUnitEffectiveStats, false, FuzzMode::kBattlePair},
+    {"ComputeBattleUnitDefense", fe7::kAddrComputeBattleUnitDefense, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitBaseDefense", fe7::kAddrComputeBattleUnitBaseDefense,
+     false, FuzzMode::kBattlePair},
+    {"ComputeBattleUnitAttack", fe7::kAddrComputeBattleUnitAttack, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitSpeed", fe7::kAddrComputeBattleUnitSpeed, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitHitRate", fe7::kAddrComputeBattleUnitHitRate, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitAvoidRate", fe7::kAddrComputeBattleUnitAvoidRate, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitCritRate", fe7::kAddrComputeBattleUnitCritRate, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitDodgeRate", fe7::kAddrComputeBattleUnitDodgeRate, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitEffectiveHitRate",
+     fe7::kAddrComputeBattleUnitEffectiveHitRate, false, FuzzMode::kBattlePair},
+    {"ComputeBattleUnitEffectiveCritRate",
+     fe7::kAddrComputeBattleUnitEffectiveCritRate, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitSilencerRate", fe7::kAddrComputeBattleUnitSilencerRate,
+     false, FuzzMode::kBattlePair},
+    {"ComputeBattleUnitWeaponRankBonuses",
+     fe7::kAddrComputeBattleUnitWeaponRankBonuses, false,
+     FuzzMode::kBattlePair},
+    {"ComputeBattleUnitStatusBonuses", fe7::kAddrComputeBattleUnitStatusBonuses,
+     false, FuzzMode::kBattlePair},
+    {"ComputeBattleUnitSpecialWeaponStats",
+     fe7::kAddrComputeBattleUnitSpecialWeaponStats, false,
+     FuzzMode::kBattlePair},
+    {"BattleApplyReaverEffect", fe7::kAddrBattleApplyReaverEffect, false,
+     FuzzMode::kBattlePair},
+    {"BattleApplyWeaponTriangleEffect",
+     fe7::kAddrBattleApplyWeaponTriangleEffect, false, FuzzMode::kBattlePair},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -365,6 +408,63 @@ std::vector<fe7::TraceRecord> MakeUnitItemTraces(uint32_t gba_addr,
   return out;
 }
 
+// Synthesizes paired BattleUnits at kBattleActorAddr / kBattleTargetAddr with
+// real ROM PInfo/JInfo, weapons, terrain, status rings, and tactician flags.
+std::vector<fe7::TraceRecord> MakeBattleUnitTraces(uint32_t gba_addr,
+                                                   size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0xBA771E01u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr uint32_t kActorOff = fe7::kBattleActorAddr - 0x02000000u;
+    constexpr uint32_t kTargetOff = fe7::kBattleTargetAddr - 0x02000000u;
+    for (uint32_t off : {kActorOff, kTargetOff}) {
+      PopulateSyntheticUnit(rec.ewram, off, rng);
+      fe7::BattleUnit bu{};
+      std::memcpy(&bu.unit, rec.ewram.data() + off, sizeof(fe7::Unit));
+      bu.unit.status = static_cast<uint8_t>(NextXorshift(rng) % 9u);
+      const uint16_t iid =
+          static_cast<uint16_t>(1u + (NextXorshift(rng) % 0x9Eu));
+      bu.weapon = static_cast<uint16_t>((0x14u << 8) | iid);
+      bu.weapon_before = bu.weapon;
+      bu.weapon_attributes = fe7::GetItemAttributes(bu.weapon);
+      bu.weapon_type = static_cast<uint8_t>(fe7::GetItemKind(bu.weapon));
+      bu.wtriangle_hit_bonus = static_cast<int8_t>(
+          static_cast<int32_t>(NextXorshift(rng) % 3u) * 15 - 15);
+      bu.wtriangle_dmg_bonus =
+          static_cast<int8_t>(static_cast<int32_t>(NextXorshift(rng) % 3u) - 1);
+      bu.terrain_defense = static_cast<int8_t>(NextXorshift(rng) % 4u);
+      bu.terrain_avoid = static_cast<int8_t>((NextXorshift(rng) % 4u) * 10u);
+      bu.terrain_resistance = static_cast<int8_t>(NextXorshift(rng) % 4u);
+      bu.battle_speed = static_cast<int16_t>(NextXorshift(rng) % 30u);
+      bu.battle_hit_rate = static_cast<int16_t>(NextXorshift(rng) % 150u);
+      bu.battle_avoid_rate = static_cast<int16_t>(NextXorshift(rng) % 80u);
+      bu.battle_crit_rate = static_cast<int16_t>(NextXorshift(rng) % 60u);
+      bu.battle_dodge_rate = static_cast<int16_t>(NextXorshift(rng) % 30u);
+      std::memcpy(rec.ewram.data() + off, &bu, sizeof(fe7::BattleUnit));
+    }
+
+    // Vary tactician flags & stars in gPlayStatus+0x2B..0x2D.
+    const uint32_t play_off = fe7::kPlayStatusAddr - 0x02000000u;
+    rec.ewram[play_off + 0x1Bu] = static_cast<uint8_t>(NextXorshift(rng) % 4u);
+    rec.ewram[play_off + 0x2Bu] = static_cast<uint8_t>(
+        ((NextXorshift(rng) % 7u) << 4) | (NextXorshift(rng) & 1u));
+    const uint16_t stars =
+        static_cast<uint16_t>((NextXorshift(rng) % 150u) << 4);
+    std::memcpy(rec.ewram.data() + play_off + 0x2Cu, &stars, sizeof(stars));
+
+    rec.regs[0] = fe7::kBattleActorAddr;
+    rec.regs[1] = fe7::kBattleTargetAddr;
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -465,6 +565,12 @@ int main(int argc, char** argv) {
             MakeUnitItemTraces(entry.gba_addr, fuzz_iters, entry.fuzz_mode);
         res = fe7::DiffFunction(entry.gba_addr, fn, ui_traces, 0, 0xFE700001u,
                                 opts);
+        break;
+      }
+      case FuzzMode::kBattlePair: {
+        auto battle_traces = MakeBattleUnitTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, battle_traces, 0,
+                                0xFE700001u, opts);
         break;
       }
       case FuzzMode::kTracesOnly:
