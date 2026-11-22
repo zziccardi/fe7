@@ -42,16 +42,19 @@ int main(int argc, char** argv) {
     fe7::hal::Shutdown();
     return 1;
   }
-  // Open at 3x native GBA resolution (720x480) for crisp integer scaling on desktop displays.
-  SDL_Window* window = SDL_CreateWindow(
-      "Fire Emblem 7 (Native)", fe7::kViewportWidth * 3, fe7::kViewportHeight * 3,
-      SDL_WINDOW_RESIZABLE);
-  SDL_Renderer* renderer = window ? SDL_CreateRenderer(window, nullptr) : nullptr;
-  // Match libmgba's 32-bit XBGR8888 software framebuffer layout for zero-conversion uploads.
+  // Open at 3x native GBA resolution (720x480) for crisp integer scaling on
+  // desktop displays.
+  SDL_Window* window =
+      SDL_CreateWindow("Fire Emblem 7 (Native)", fe7::kViewportWidth * 3,
+                       fe7::kViewportHeight * 3, SDL_WINDOW_RESIZABLE);
+  SDL_Renderer* renderer =
+      window ? SDL_CreateRenderer(window, nullptr) : nullptr;
+  // Match libmgba's 32-bit XBGR8888 software framebuffer layout for
+  // zero-conversion uploads.
   SDL_Texture* texture =
       renderer ? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR8888,
-                                   SDL_TEXTUREACCESS_STREAMING, fe7::kViewportWidth,
-                                   fe7::kViewportHeight)
+                                   SDL_TEXTUREACCESS_STREAMING,
+                                   fe7::kViewportWidth, fe7::kViewportHeight)
                : nullptr;
 
   bool running = (window && renderer && texture);
@@ -69,7 +72,8 @@ int main(int argc, char** argv) {
     SDL_RenderClear(renderer);
     SDL_RenderTexture(renderer, texture, nullptr, nullptr);
     SDL_RenderPresent(renderer);
-    // Approximate ~60 Hz pacing until audio-driven or vsync frame pacing is wired up.
+    // Approximate ~60 Hz pacing until audio-driven or vsync frame pacing is
+    // wired up.
     SDL_Delay(16);
   }
 
@@ -79,7 +83,8 @@ int main(int argc, char** argv) {
   if (window != nullptr) SDL_DestroyWindow(window);
   SDL_Quit();
 #else
-  // Allow smoke-testing the binary in headless environments without SDL3 installed.
+  // Allow smoke-testing the binary in headless environments without SDL3
+  // installed.
   std::cout << "fe7_native built without SDL3; stepping 1 frame headlessly.\n";
   fe7::hal::StepFrame(0);
 #endif

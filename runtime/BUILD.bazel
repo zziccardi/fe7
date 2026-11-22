@@ -41,6 +41,7 @@ fe7_runtime_cc_library(
         "//runtime:__subpackages__",
     ],
     deps = [
+        "@abseil-cpp//absl/base:no_destructor",
         "@abseil-cpp//absl/base:nullability",
         "@abseil-cpp//absl/container:flat_hash_map",
     ],
@@ -96,6 +97,8 @@ fe7_runtime_cc_library(
         ":gba_ptr",
         ":mgba_bridge",
         ":rom_loader",
+        "@abseil-cpp//absl/base:no_destructor",
+        "@abseil-cpp//absl/base:nullability",
         "@mgba//:mgba_gba",
     ],
 )

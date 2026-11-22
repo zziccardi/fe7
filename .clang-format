@@ -1,4 +1,4 @@
 BasedOnStyle: Google
-ColumnLimit: 100
+ColumnLimit: 80
 Standard: c++20
 SortIncludes: CaseSensitive

@@ -2,9 +2,7 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <fstream>
-#include <iterator>
 #include <string>
 #include <utility>
 
@@ -15,12 +13,14 @@
 namespace fe7 {
 namespace {
 
-// 32-bit left rotation used throughout SHA-1 message schedule expansion and compression rounds.
+// 32-bit left rotation used throughout SHA-1 message schedule expansion and
+// compression rounds.
 inline uint32_t Rol32(uint32_t value, uint32_t bits) {
   return (value << bits) | (value >> (32u - bits));
 }
 
-// Compresses one 64-byte (512-bit) SHA-1 message block into `state` per FIPS 180-4.
+// Compresses one 64-byte (512-bit) SHA-1 message block into `state` per FIPS
+// 180-4.
 void Sha1ProcessBlock(const uint8_t* block, std::array<uint32_t, 5>& state) {
   uint32_t w[80];
   // Decode the 16 input words in big-endian byte order as mandated by SHA-1.
@@ -30,7 +30,8 @@ void Sha1ProcessBlock(const uint8_t* block, std::array<uint32_t, 5>& state) {
            (static_cast<uint32_t>(block[i * 4 + 2]) << 8) |
            static_cast<uint32_t>(block[i * 4 + 3]);
   }
-  // Expand the 16 words to 80 schedule words using the FIPS 180-4 XOR + 1-bit rotate recurrence.
+  // Expand the 16 words to 80 schedule words using the FIPS 180-4 XOR + 1-bit
+  // rotate recurrence.
   for (int i = 16; i < 80; ++i) {
     w[i] = Rol32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
   }
@@ -41,7 +42,8 @@ void Sha1ProcessBlock(const uint8_t* block, std::array<uint32_t, 5>& state) {
   uint32_t d = state[3];
   uint32_t e = state[4];
 
-  // Execute the four 20-round stages, each with its standard boolean mixing function and constant.
+  // Execute the four 20-round stages, each with its standard boolean mixing
+  // function and constant.
   for (int i = 0; i < 80; ++i) {
     uint32_t f = 0;
     uint32_t k = 0;
@@ -82,14 +84,15 @@ std::string ComputeSha1Hex(std::span<const uint8_t> data) {
       0x67452301u, 0xEFCDAB89u, 0x98BADCFEu, 0x10325476u, 0xC3D2E1F0u,
   };
 
-  // Process all complete 64-byte blocks directly from the input span without copying.
+  // Process all complete 64-byte blocks directly from the input span without
+  // copying.
   const size_t full_blocks = data.size() / 64u;
   for (size_t i = 0; i < full_blocks; ++i) {
     Sha1ProcessBlock(data.data() + i * 64u, state);
   }
 
-  // Copy the trailing partial block into a zeroed 128-byte scratch buffer and append the 0x80
-  // end-of-message bit marker required by SHA-1 padding.
+  // Copy the trailing partial block into a zeroed 128-byte scratch buffer and
+  // append the 0x80 end-of-message bit marker required by SHA-1 padding.
   std::array<uint8_t, 128> tail{};
   const size_t rem = data.size() % 64u;
   if (rem > 0) {
@@ -97,12 +100,13 @@ std::string ComputeSha1Hex(std::span<const uint8_t> data) {
   }
   tail[rem] = 0x80u;
 
-  // If fewer than 8 bytes remain after the 0x80 byte (rem >= 56), the 64-bit bit-length footer
-  // spills into a second 64-byte block.
+  // If fewer than 8 bytes remain after the 0x80 byte (rem >= 56), the 64-bit
+  // bit-length footer spills into a second 64-byte block.
   const size_t pad_blocks = (rem >= 56u) ? 2u : 1u;
   const uint64_t bit_len = static_cast<uint64_t>(data.size()) * 8ull;
   const size_t len_offset = pad_blocks * 64u - 8u;
-  // Write the original message bit length in big-endian order in the final 8 bytes.
+  // Write the original message bit length in big-endian order in the final 8
+  // bytes.
   for (int i = 0; i < 8; ++i) {
     tail[len_offset + static_cast<size_t>(i)] =
         static_cast<uint8_t>((bit_len >> ((7 - i) * 8)) & 0xFFu);
@@ -112,7 +116,8 @@ std::string ComputeSha1Hex(std::span<const uint8_t> data) {
     Sha1ProcessBlock(tail.data() + i * 64u, state);
   }
 
-  // Serialize the 5 big-endian 32-bit digest words into a 40-character lowercase hex string.
+  // Serialize the 5 big-endian 32-bit digest words into a 40-character
+  // lowercase hex string.
   static constexpr char kHex[] = "0123456789abcdef";
   std::string out(40, '0');
   for (size_t i = 0; i < 5; ++i) {
@@ -125,10 +130,12 @@ std::string ComputeSha1Hex(std::span<const uint8_t> data) {
 
 absl::Status ValidateRetailRomBytes(std::span<const uint8_t> data,
                                     std::string* absl_nullable sha1_out) {
-  // Reject wrong-sized files before hashing so oversized or truncated inputs fail immediately.
+  // Reject wrong-sized files before hashing so oversized or truncated inputs
+  // fail immediately.
   if (data.size() != kExpectedRomSize) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Invalid ROM size: expected 16777216 bytes (16 MiB), got ", data.size(), " bytes"));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid ROM size: expected 16777216 bytes (16 MiB), got ",
+                     data.size(), " bytes"));
   }
 
   const std::string sha1 = ComputeSha1Hex(data);
@@ -136,14 +143,15 @@ absl::Status ValidateRetailRomBytes(std::span<const uint8_t> data,
     *sha1_out = sha1;
   }
   if (sha1 != kExpectedFe7UsSha1) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid ROM SHA-1: expected ", kExpectedFe7UsSha1, ", got ", sha1));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid ROM SHA-1: expected ", kExpectedFe7UsSha1, ", got ", sha1));
   }
   return absl::OkStatus();
 }
 
 absl::StatusOr<RomImage> LoadRomFile(std::string_view path) {
-  // Open positioned at EOF (ios::ate) so tellg() yields the file size for a single-pass read.
+  // Open positioned at EOF (ios::ate) so tellg() yields the file size for a
+  // single-pass read.
   std::ifstream file(std::string(path), std::ios::binary | std::ios::ate);
   if (!file.is_open()) {
     return absl::NotFoundError(absl::StrCat("Failed to open ROM file: ", path));
@@ -151,18 +159,21 @@ absl::StatusOr<RomImage> LoadRomFile(std::string_view path) {
 
   const std::ifstream::pos_type file_size = file.tellg();
   if (file_size < 0) {
-    return absl::InternalError(absl::StrCat("Failed to determine ROM file size: ", path));
+    return absl::InternalError(
+        absl::StrCat("Failed to determine ROM file size: ", path));
   }
 
   std::vector<uint8_t> buffer(static_cast<size_t>(file_size));
   file.seekg(0, std::ios::beg);
   if (!buffer.empty() &&
-      !file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()))) {
+      !file.read(reinterpret_cast<char*>(buffer.data()),
+                 static_cast<std::streamsize>(buffer.size()))) {
     return absl::InternalError(absl::StrCat("Failed to read ROM file: ", path));
   }
 
   std::string sha1;
-  if (absl::Status status = ValidateRetailRomBytes(buffer, &sha1); !status.ok()) {
+  if (absl::Status status = ValidateRetailRomBytes(buffer, &sha1);
+      !status.ok()) {
     return status;
   }
 
@@ -174,9 +185,11 @@ absl::StatusOr<RomImage> LoadRomFile(std::string_view path) {
 }
 
 absl::StatusOr<RomImage> LoadSyntheticRom(std::span<const uint8_t> data) {
-  // Enforce the GBA's 32 MiB Game Pak ROM ceiling so GbaPtr/mGBA bounds invariants remain valid.
+  // Enforce the GBA's 32 MiB Game Pak ROM ceiling so GbaPtr/mGBA bounds
+  // invariants remain valid.
   if (data.empty() || data.size() > 32u * 1024u * 1024u) {
-    return absl::InvalidArgumentError("Synthetic ROM size must be between 1 byte and 32 MiB");
+    return absl::InvalidArgumentError(
+        "Synthetic ROM size must be between 1 byte and 32 MiB");
   }
 
   RomImage out;

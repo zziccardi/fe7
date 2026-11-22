@@ -39,20 +39,23 @@ BAZEL_JVM_FLAGS=(
 "$BAZEL" "${BAZEL_JVM_FLAGS[@]}" test //...
 "$BAZEL" "${BAZEL_JVM_FLAGS[@]}" test --config=release //...
 
-# Enforce game/ C-with-types guardrails
+# Enforce game/ C-with-types guardrails & 80-column Google formatting
 python3 tools/check_agent_rules.py
+clang-format --dry-run --Werror runtime/*.h runtime/*.cc runtime/*.c
 ```
 
 ## 3. Coding, Documentation & Commit Conventions
 
 - **Package layout**: Headers, implementations, and unit tests are colocated in top-level Bazel packages (`runtime/` and `game/`). Include headers relative to workspace root (`#include "runtime/gba_ptr.h"`, `#include "game/..."`).
 - **Naming**: Constants use `kCamelCase` (`kRomBaseAddr`); globals and file-scope variables use `gCamelCase` (`gMem`, `gNativeTable`, `gActiveUnit`).
-- **Abseil**: `abseil-cpp` is available in `runtime/` (`absl::flat_hash_map`, `absl::Status`/`absl::StatusOr`, `absl::flags`, `absl_nonnull`/`absl_nullable`). In `game/`, only zero-cost header annotations (`absl_nonnull`/`absl_nullable`) are allowed—heap-allocating Abseil containers are forbidden during Phases 1–4.
+- **Globals & `absl::NoDestructor`**: Never declare globals with non-trivial destructors. Wrap non-trivial runtime globals (e.g., `gFallbackCounts`, `gRomBytes`) in `absl::NoDestructor<T>`, and release heap capacity on teardown (e.g., `std::vector<uint8_t>().swap(*gRomBytes)`) so LSan stays clean.
+- **Abseil**: `abseil-cpp` is available in `runtime/` (`absl::flat_hash_map`, `absl::Status`/`absl::StatusOr`, `absl::flags`, `absl::NoDestructor`, `absl_nonnull`/`absl_nullable`). In `game/`, only zero-cost header annotations (`absl_nonnull`/`absl_nullable`) are allowed—heap-allocating Abseil containers are forbidden during Phases 1–4.
+- **Include-What-You-Use (IWYU)**: Include every header directly used in each file and remove unused includes.
 - **Header files (`.h`)**: Always include a module-level comment block at the top explaining the module's purpose, invariants, and architectural role.
 - **Public interfaces**: Document public constants, structs/classes, typedefs, and functions (parameters, return values, ownership/lifetime requirements).
 - **Non-trivial implementations**: Include inline comments explaining *why* each non-trivial statement is performed (e.g., hardware bus rules, ARM7TDMI pipeline offsets, memory ownership order, ABI constraints), not merely restating what the code does.
-- **C++20 style**: Google C++ Style Guide (`.clang-format`, 100-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `game/`.
-- **Commits**: Use Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
+- **C++20 style**: Google C++ Style Guide (`.clang-format`, 80-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `game/`.
+- **Commits**: Use Conventional Commits (`feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `chore:`).
 
 ## 4. Runtime, Bazel & libmgba Gotchas
 

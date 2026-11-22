@@ -1,5 +1,6 @@
 #include "runtime/dispatch.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #include "gtest/gtest.h"
@@ -7,7 +8,8 @@
 namespace fe7 {
 namespace {
 
-uint32_t MockNativeAdd(uint32_t r0, uint32_t r1, uint32_t, uint32_t, const uint32_t*) {
+uint32_t MockNativeAdd(uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                       const uint32_t*) {
   return r0 + r1;
 }
 
@@ -16,8 +18,8 @@ uint32_t MockNativeFiveArgs(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
   return r0 + r1 + r2 + r3 + (stack_args != nullptr ? stack_args[0] : 0u);
 }
 
-uint32_t MockFallbackExec(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t, uint32_t,
-                          const uint32_t*, size_t) {
+uint32_t MockFallbackExec(uint32_t gba_addr, uint32_t r0, uint32_t r1, uint32_t,
+                          uint32_t, const uint32_t*, size_t) {
   if (gba_addr == 0x08002000u) {
     // Simulate Fallback -> Native re-entrant call.
     uint32_t out = 0;
