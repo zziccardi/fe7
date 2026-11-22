@@ -59,6 +59,7 @@ def main(argv: list[str]) -> int:
   roots = [pathlib.Path(a) for a in argv[1:]] or [
       pathlib.Path("runtime"),
       pathlib.Path("game"),
+      pathlib.Path("testing"),
   ]
   all_errors: list[str] = []
   for root in roots:

@@ -12,6 +12,7 @@ fe7_runtime_cc_library(
     visibility = [
         "//game:__subpackages__",
         "//runtime:__subpackages__",
+        "//testing:__subpackages__",
     ],
     deps = ["@abseil-cpp//absl/base:nullability"],
 )
@@ -28,6 +29,7 @@ fe7_runtime_cc_library(
     visibility = [
         "//game:__subpackages__",
         "//runtime:__subpackages__",
+        "//testing:__subpackages__",
     ],
     deps = ["@abseil-cpp//absl/base:nullability"],
 )
@@ -39,6 +41,7 @@ fe7_runtime_cc_library(
     visibility = [
         "//game:__subpackages__",
         "//runtime:__subpackages__",
+        "//testing:__subpackages__",
     ],
     deps = [
         "@abseil-cpp//absl/base:no_destructor",
@@ -157,6 +160,26 @@ fe7_cc_test(
     ],
 )
 
+fe7_runtime_cc_library(
+    name = "input_script",
+    srcs = ["input_script.cc"],
+    hdrs = ["input_script.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+fe7_cc_test(
+    name = "input_script_test",
+    srcs = ["input_script_test.cc"],
+    deps = [
+        ":input_script",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
 cc_binary(
     name = "fe7_headless",
     srcs = ["tas_runner.cc"],
@@ -165,10 +188,12 @@ cc_binary(
         ":dispatch",
         ":gba_hal",
         ":gba_ptr",
+        ":input_script",
         ":mgba_hal",
         ":rom_loader",
         ":trace_recorder",
         "//game:register_all",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",

@@ -1,0 +1,28 @@
+# End-to-end integration tests exercising multiple decompiled FE7 subsystems
+# together without requiring a retail GBA ROM.
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test")
+
+fe7_cc_test(
+    name = "skirmish_integration_test",
+    srcs = ["skirmish_integration_test.cc"],
+    deps = [
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:register_all",
+        "//game:unit_hdr",
+        "//game/ai:ai",
+        "//game/battle:battle",
+        "//game/battle:battle_exp",
+        "//game/battle:battle_sim",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//game/support:support",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
