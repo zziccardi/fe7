@@ -4,6 +4,7 @@
 #include "game/ai/ai.h"
 #include "game/ai/ai_actions.h"
 #include "game/ai/ai_combat.h"
+#include "game/ai/ai_cp.h"
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
@@ -41,6 +42,7 @@ void RegisterAllNativeFunctions() {
   RegisterAiOpcodeFunctions();
   RegisterAiActionFunctions();
   RegisterAiCombatFunctions();
+  RegisterAiCpFunctions();
   RegisterActionFunctions();
 }
 

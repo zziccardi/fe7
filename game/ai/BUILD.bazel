@@ -232,3 +232,43 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ai_cp",
+    srcs = ["ai_cp.cc"],
+    hdrs = ["ai_cp.h"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_combat",
+        ":ai_decide",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/action:action",
+        "//game/engine:proc",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_cp_test",
+    srcs = ["ai_cp_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_cp",
+        "//game:unit_hdr",
+        "//game/engine:proc",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)

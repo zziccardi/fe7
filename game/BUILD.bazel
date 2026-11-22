@@ -58,6 +58,7 @@ fe7_game_cc_library(
         "//game/ai:ai",
         "//game/ai:ai_actions",
         "//game/ai:ai_combat",
+        "//game/ai:ai_cp",
         "//game/ai:ai_decide",
         "//game/ai:ai_opcodes",
         "//game/ai:ai_script",

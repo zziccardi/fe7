@@ -20,6 +20,7 @@
 #include "game/ai/ai.h"
 #include "game/ai/ai_actions.h"
 #include "game/ai/ai_combat.h"
+#include "game/ai/ai_cp.h"
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
@@ -76,6 +77,7 @@ enum class FuzzMode {
   kAiOpcodeState,
   kAiActionState,
   kAiCombatState,
+  kAiCpState,
   kTracesOnly,
 };
 
@@ -919,6 +921,57 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      false, FuzzMode::kAiCombatState},
     {"AiTryStealFromPos", fe7::kAddrAiTryStealFromPos, true,
      FuzzMode::kAiCombatState},
+    // Batch 4: Top-level CpDecide/CpPerform state-machine procs (28).
+    {"CpDecideMain", fe7::kAddrCpDecideMain, false, FuzzMode::kAiCpState},
+    {"CpDecideSuspendOrRecover", fe7::kAddrCpDecideSuspendOrRecover, false,
+     FuzzMode::kAiCpState},
+    {"CpDecideDoorOrChest", fe7::kAddrCpDecideDoorOrChest, false,
+     FuzzMode::kAiCpState},
+    {"CpDecideScriptA", fe7::kAddrCpDecideScriptA, false, FuzzMode::kAiCpState},
+    {"CpDecideScriptB", fe7::kAddrCpDecideScriptB, false, FuzzMode::kAiCpState},
+    {"AiCursorFlashLoop", fe7::kAddrAiCursorFlashLoop, false,
+     FuzzMode::kTracesOnly},
+    {"StartAiCursorFlash", fe7::kAddrStartAiCursorFlash, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformEnsureMapBgm", fe7::kAddrCpPerformEnsureMapBgm, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformCameraWatch", fe7::kAddrCpPerformCameraWatch, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformBeginMove", fe7::kAddrCpPerformBeginMove, false,
+     FuzzMode::kTracesOnly},
+    {"AiEndMuAndRefreshUnits", fe7::kAddrAiEndMuAndRefreshUnits, false,
+     FuzzMode::kTracesOnly},
+    {"CpPerformAttack", fe7::kAddrCpPerformAttack, false,
+     FuzzMode::kTracesOnly},
+    {"CpPerformEscapeMove", fe7::kAddrCpPerformEscapeMove, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformSteal", fe7::kAddrCpPerformSteal, false, FuzzMode::kTracesOnly},
+    {"CpPerformPillageOrChest", fe7::kAddrCpPerformPillageOrChest, true,
+     FuzzMode::kTracesOnly},
+    {"CpPerformStaff", fe7::kAddrCpPerformStaff, true, FuzzMode::kTracesOnly},
+    {"CpPerformUseItem", fe7::kAddrCpPerformUseItem, true,
+     FuzzMode::kTracesOnly},
+    {"CpPerformActionNop", fe7::kAddrCpPerformActionNop, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformTalk", fe7::kAddrCpPerformTalk, true, FuzzMode::kAiCpState},
+    {"CpPerformRideBallista", fe7::kAddrCpPerformRideBallista, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformExitBallista", fe7::kAddrCpPerformExitBallista, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformTargetCursor", fe7::kAddrCpPerformTargetCursor, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformDispatchAction", fe7::kAddrCpPerformDispatchAction, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformActionLoop", fe7::kAddrCpPerformActionLoop, false,
+     FuzzMode::kAiCpState},
+    {"CpPerformCleanup", fe7::kAddrCpPerformCleanup, false,
+     FuzzMode::kTracesOnly},
+    {"CpPerformWaitDone", fe7::kAddrCpPerformWaitDone, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformWaitEscape", fe7::kAddrCpPerformWaitEscape, true,
+     FuzzMode::kAiCpState},
+    {"CpPerformWaitSteal", fe7::kAddrCpPerformWaitSteal, true,
+     FuzzMode::kAiCpState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -3593,6 +3646,187 @@ std::vector<fe7::TraceRecord> MakeAiCombatTraces(uint32_t gba_addr,
   return out;
 }
 
+std::vector<fe7::TraceRecord> MakeAiCpTraces(uint32_t gba_addr, size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x0C90A104u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x15000u;
+    constexpr uint32_t kFogMapBufOff = 0x15800u;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kFogMapBufOff, fe7::kMapFogAddr, kW, kH,
+                           0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    // Clear trap array so GetTrapAt / GetBallistaItemAt terminate cleanly.
+    std::memset(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), 0,
+                65u * sizeof(fe7::Trap));
+
+    // Initialize clean Proc pool and a synthetic parent Proc at slot 0.
+    constexpr uint32_t kProcPoolCount = 64u;
+    const uint32_t proc_pool_off = fe7::kProcsAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + proc_pool_off, 0,
+                kProcPoolCount * sizeof(fe7::Proc));
+    const uint32_t proc_addr = fe7::kProcsAddr;
+    fe7::Proc parent_proc{};
+    parent_proc.proc_script =
+        fe7::GbaPtr<const fe7::ProcScr>(fe7::kAiMapBgmProcScrAddr);
+    parent_proc.proc_script_pc =
+        fe7::GbaPtr<const fe7::ProcScr>(fe7::kAiMapBgmProcScrAddr);
+    std::memcpy(rec.ewram.data() + proc_pool_off, &parent_proc,
+                sizeof(parent_proc));
+    // Set proc_alloc_head to point to proc slot 1..63.
+    const uint32_t alloc_table_addr = fe7::kProcAllocListAddr;
+    const uint32_t alloc_table_off = alloc_table_addr - 0x02000000u;
+    for (uint32_t k = 0; k < kProcPoolCount; ++k) {
+      const uint32_t p = fe7::kProcsAddr + k * sizeof(fe7::Proc);
+      std::memcpy(rec.ewram.data() + alloc_table_off + k * 4u, &p, 4);
+    }
+    const uint32_t head_ptr = alloc_table_addr + 4u;
+    std::memcpy(rec.ewram.data() + (fe7::kProcAllocHeadAddr - 0x02000000u),
+                &head_ptr, 4);
+    // Point proc+0x2C to CpPerformWaitDone | 1u and proc+0x30 to 0..6.
+    const uint32_t wait_done_fn = fe7::kAddrCpPerformWaitDone | 1u;
+    std::memcpy(rec.ewram.data() + proc_pool_off + 0x2Cu, &wait_done_fn, 4);
+    rec.ewram[proc_pool_off + 0x30u] = static_cast<uint8_t>(i % 7u);
+    rec.ewram[proc_pool_off + 0x31u] = 0u;
+
+    // Populate enemy active 0x81 and player 0x01.
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    fe7::Unit ua{};
+    fe7::Unit ub{};
+    std::memcpy(&ua, rec.ewram.data() + unit_a_off, sizeof(ua));
+    std::memcpy(&ub, rec.ewram.data() + unit_b_off, sizeof(ub));
+    ua.id = static_cast<int8_t>(0x81);
+    ua.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ua.flags = 0u;
+    ua.ai_a = 0u;
+    ua.ai_a_pc = 0u;
+    ua.ai_b = 0u;
+    ua.ai_b_pc = 0u;
+    ua.ai_config = 0u;
+    ua.wexp[0] = 251u;
+    ua.items[0] = 0x2E01u;
+    ua.items[1] = 0u;
+    ub.id = 0x01;
+    ub.x = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.y = static_cast<int8_t>(1 + (NextXorshift(rng) % 6u));
+    ub.flags = 0u;
+    ub.items[0] = 0x2E01u;
+    ub.items[1] = 0u;
+    std::memcpy(rec.ewram.data() + unit_a_off, &ua, sizeof(ua));
+    std::memcpy(rec.ewram.data() + unit_b_off, &ub, sizeof(ub));
+
+    const uint32_t ua_addr = fe7::GetUnit(0x81).addr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+
+    // Seed PlayStatus: vision = 1, chapter = 1, faction = 0x80 (enemy).
+    const uint32_t ps_off = fe7::kPlayStatusAddr - 0x02000000u;
+    rec.ewram[ps_off + 0x0Du] = 1u;
+    rec.ewram[ps_off + 0x0Eu] = 1u;
+    rec.ewram[ps_off + 0x0Fu] = 0x80u;
+
+    // Seed AI state and decision.
+    const uint32_t ai_state_off = fe7::kAiStateAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + ai_state_off, 0, 0x90u);
+    rec.ewram[ai_state_off + 0x79u] = (NextXorshift(rng) & 1u) ? 4u : 0u;
+    rec.ewram[ai_state_off + 0x7Bu] = (NextXorshift(rng) % 3u == 0u) ? 4u : 0u;
+
+    fe7::AiDecision dec{};
+    static constexpr uint8_t kSafeDispatchActs[8] = {0u, 4u, 5u, 6u,
+                                                     7u, 8u, 9u, 10u};
+    static constexpr uint8_t kSafeCursorActs[6] = {0u, 2u, 4u, 6u, 9u, 10u};
+    if (gba_addr == fe7::kAddrCpPerformDispatchAction) {
+      dec.action_id = kSafeDispatchActs[NextXorshift(rng) % 8u];
+    } else if (gba_addr == fe7::kAddrCpPerformTargetCursor) {
+      dec.action_id = kSafeCursorActs[NextXorshift(rng) % 6u];
+    } else {
+      dec.action_id = 0u;
+    }
+    dec.x_move = static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    dec.y_move = static_cast<uint8_t>(1 + (NextXorshift(rng) % 6u));
+    dec.unit_target_id = 1u;
+    dec.x_target = 5u;
+    dec.action_performed = (gba_addr == fe7::kAddrCpDecideMain)
+                               ? static_cast<int8_t>(NextXorshift(rng) & 1u)
+                               : 0;
+    std::memcpy(rec.ewram.data() + (fe7::kAiDecisionAddr - 0x02000000u), &dec,
+                sizeof(dec));
+
+    // Clear gActionData.
+    std::memset(rec.ewram.data() + (fe7::kAiActionDataAddr - 0x02000000u), 0,
+                0x20u);
+
+    switch (gba_addr) {
+      case fe7::kAddrStartAiCursorFlash:
+        rec.regs[0] = 32u;
+        rec.regs[1] = 48u;
+        rec.regs[2] = 2u;
+        rec.regs[3] = proc_addr;
+        break;
+      case fe7::kAddrCpPerformCameraWatch:
+      case fe7::kAddrCpPerformEscapeMove:
+      case fe7::kAddrCpPerformActionNop:
+      case fe7::kAddrCpPerformTalk:
+      case fe7::kAddrCpPerformRideBallista:
+      case fe7::kAddrCpPerformExitBallista:
+      case fe7::kAddrCpPerformTargetCursor:
+      case fe7::kAddrCpPerformDispatchAction:
+      case fe7::kAddrCpPerformActionLoop:
+      case fe7::kAddrCpPerformWaitDone:
+      case fe7::kAddrCpPerformWaitEscape:
+      case fe7::kAddrCpPerformWaitSteal:
+        rec.regs[0] = proc_addr;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -3776,6 +4010,12 @@ int main(int argc, char** argv) {
       case FuzzMode::kAiCombatState: {
         auto cbt_traces = MakeAiCombatTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, cbt_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kAiCpState: {
+        auto cp_traces = MakeAiCpTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, cp_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }
