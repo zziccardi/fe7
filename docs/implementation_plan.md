@@ -167,22 +167,32 @@ inline void* absl_nullable ResolveGbaRaw(uint32_t addr, size_t size, size_t alig
 
 template <typename T>
 struct GbaPtr {
-  static_assert(std::is_trivially_copyable_v<T>, "GbaPtr<T> requires trivially copyable POD");
   uint32_t addr = 0;
 
   constexpr GbaPtr() = default;
   constexpr explicit GbaPtr(uint32_t raw) : addr(raw) {}
   constexpr explicit operator bool() const { return addr != 0; }
 
-  T* absl_nonnull get() const { return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T))); }
-  T* absl_nonnull operator->() const { return get(); }
-  T& operator*() const { return *get(); }
-  T& operator[](ptrdiff_t idx) const {
-    return *GbaPtr<T>(addr + static_cast<uint32_t>(idx * static_cast<ptrdiff_t>(sizeof(T)))).get();
+  T* absl_nonnull get() const
+    requires(!std::is_void_v<T>)
+  {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "GbaPtr<T> requires trivially copyable POD");
+    return static_cast<T*>(ResolveGbaRaw(addr, sizeof(T), alignof(T)));
   }
-  GbaPtr<T> operator+(ptrdiff_t n) const {
-    return GbaPtr<T>(addr + static_cast<uint32_t>(n * static_cast<ptrdiff_t>(sizeof(T))));
+  T* absl_nonnull operator->() const
+    requires(!std::is_void_v<T>)
+  {
+    return get();
   }
+  std::add_lvalue_reference_t<T> operator*() const
+    requires(!std::is_void_v<T>)
+  {
+    return *get();
+  }
+  // operator[] and operator+ perform 64-bit signed offset math and check
+  // trivially-copyable POD on use so self-referential structs (GbaPtr<Proc>),
+  // forward declarations, and opaque GbaPtr<const void> compile cleanly.
 };
 
 // Explicit typed cast for FE7 Proc* subclasses (replaces unsafe C void* casts).
@@ -251,103 +261,106 @@ Validates the entire Phase 1 runtime **without needing a retail FE7 ROM**:
 
 ---
 
-### Component 4: Reverse-Engineering Pipeline & Differential Oracle (Phase 2)
+### Component 4: Reverse-Engineering Pipeline & Differential Oracle (Phase 2 — Complete)
 
 Activated once you stage your SHA-1-validated FE7 US ROM locally:
 
-#### [NEW] `tools/ghidra_mcp/`
-- Headless PyGhidra setup script (`setup_ghidra.py`) analyzing the user's validated ROM, importing symbols from `StanHash/fe7_us`, `MokhaLeee/FireEmblem7J`, and `FE_GBA_Function_Library`, and serving disassembly, decompiled pseudo-C, xrefs, and call graphs over MCP.
+#### [IMPLEMENTED] `tools/ghidra_mcp/setup_ghidra.py`
+- Headless PyGhidra setup script analyzing the user's validated ROM and importing symbols from `StanHash/fe7_us` (`.ghidra/fe7_us_symbols.csv`) for disassembly, decompiled pseudo-C, xrefs, and call graphs.
 
-#### [NEW] `tools/match_fe8.py`
-- Indexes local read-only clones of `FireEmblemUniverse/fireemblem8u` and `FireEmblemUniverse/fireemblem6j` (`corpus/`).
-- Maps FE7 US functions to their closest FE8U/FE6J C equivalents using symbol maps + call-graph & constant/opcode similarity, generating `tools/work_queue.json` ordered bottom-up by dependency depth.
+#### [IMPLEMENTED] `tools/match_fe8.py` (+ `tools/match_fe8_test.py`)
+- Indexes local read-only clones of `StanHash/fe7_us`, `FireEmblemUniverse/fireemblem8u`, `FireEmblemUniverse/fireemblem6j`, and `MokhaLeee/FireEmblem7J` (`corpus/`).
+- Maps FE7 US functions to their closest FE8U/FE6J C equivalents using symbol maps + call-graph & constant/opcode similarity, generating gitignored `corpus/work_queue.json` ordered bottom-up by dependency depth.
 
-#### [NEW] `tests/diff_harness/` & `tools/verify_fn.py`
-1. **Trace Capture:** `fe7-headless --rom <path> --record-traces <tas_movie>` records real execution snapshots for target functions (`r0–r3`, stack frame, pre/post dirty EWRAM/IWRAM pages).
-2. **Differential Execution (`verify_fn.py --rom <path> <gba_addr>`):**
-   - Compiles the touched `.cc` file under `debug-asan` (Clang + ASan + UBSan).
-   - Executes **original Thumb** vs. **decompiled C++20** on recorded traces + N randomized/edge-case fuzzed inputs.
-   - Asserts **exact `r0` equality** and **byte-for-byte identical EWRAM/IWRAM/MMIO diffs**. Caps automated agent retries at 5 before human escalation.
+#### [IMPLEMENTED] `runtime/trace_recorder.{h,cc}`, `runtime/diff_harness.{h,cc}`, `runtime/diff_runner.cc`, & `tools/verify_fn.py`
+1. **Trace Capture:** `//runtime:fe7_headless --rom=<path> --register_native=false --record_traces=<path>.fe7t --trace_addrs=<hex_csv>` records pre-call execution snapshots (`r0–r3`, stack args, full EWRAM/IWRAM).
+2. **Differential Execution (`//runtime:fe7_diff` & `tools/verify_fn.py`):**
+   - Executes **original Thumb** via `CallFallbackDirect()` vs. **decompiled C++20** on recorded traces + deterministic fuzzed inputs.
+   - Asserts **exact `r0` equality** (skipped for `void` Thumb epilogues via `DiffOptions::check_return_value`) and **byte-for-byte identical EWRAM and static IWRAM (`0x03000000..0x030077FF`, excluding dead ARM7TDMI stack scratch bytes)**.
+   - Verified under `--config=asan --config=headless` (Clang + ASan + UBSan) alongside `tools/check_format.py`, `tools/check_agent_rules.py`, and colocated `tools/*_test.py` (`unittest`).
 
 ---
 
-### Component 5: Subsystem-by-Subsystem AI Decompilation (Phases 3–4)
+### Component 5: Subsystem-by-Subsystem AI Decompilation (Phases 3–4 — In Progress)
 
-#### [NEW] `game/*.h` (Human-Gated Canonical Headers)
-Google-style POD structs layout-locked to FE7 US RAM:
+#### [IMPLEMENTED] `game/*.h` (Human-Gated Canonical Headers) & `game/register_all.{h,cc}`
+Google-style POD structs layout-locked to FE7 US RAM (`game/proc.h`, `game/unit.h`, verified by `game/headers_test.cc`), using `StanHash/fe7_us` canonical field names:
 
 ```cpp
-// game/unit.h
+// game/unit.h (excerpt)
 #ifndef FE7_GAME_UNIT_H_
 #define FE7_GAME_UNIT_H_
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "runtime/gba_ptr.h"
 
 namespace fe7 {
 
-struct CharacterData;
-struct ClassData;
+struct PInfo;
+struct JInfo;
+struct UnitSprite;
 
 struct Unit {
-  GbaPtr<const CharacterData> character_data;  // +0x00
-  GbaPtr<const ClassData> class_data;          // +0x04
-  int8_t level;                                // +0x08
-  uint8_t exp;                                 // +0x09
-  uint8_t ai_flags;                            // +0x0A
-  int8_t index;                                // +0x0B
-  uint32_t state;                              // +0x0C
-  int8_t x_pos;                                // +0x10
-  int8_t y_pos;                                // +0x11
-  int8_t max_hp;                               // +0x12
-  int8_t cur_hp;                               // +0x13
-  int8_t pow;                                  // +0x14
-  int8_t skl;                                  // +0x15
-  int8_t spd;                                  // +0x16
-  int8_t def;                                  // +0x17
-  int8_t res;                                  // +0x18
-  int8_t lck;                                  // +0x19
-  int8_t con_bonus;                            // +0x1A
-  uint8_t rescue_other_unit;                   // +0x1B
-  uint8_t ballista_index;                      // +0x1C
-  int8_t mov_bonus;                            // +0x1D
-  uint16_t items[5];                           // +0x1E
-  uint8_t ranks[8];                            // +0x28
-  uint8_t status_index : 4;                    // +0x30
+  GbaPtr<const PInfo> pinfo;            // 0x00: Character data in ROM
+  GbaPtr<const JInfo> jinfo;            // 0x04: Class data in ROM
+  int8_t level;                         // 0x08
+  uint8_t exp;                          // 0x09
+  uint8_t ai_flags;                     // 0x0A
+  int8_t id;                            // 0x0B: Faction + 1-based slot index
+  uint32_t flags;                       // 0x0C: kUnitFlag* bitmask
+  int8_t x;                             // 0x10
+  int8_t y;                             // 0x11
+  int8_t max_hp;                        // 0x12
+  int8_t hp;                            // 0x13
+  int8_t pow;                           // 0x14
+  int8_t skl;                           // 0x15
+  int8_t spd;                           // 0x16
+  int8_t def;                           // 0x17
+  int8_t res;                           // 0x18
+  int8_t lck;                           // 0x19
+  int8_t bonus_con;                     // 0x1A
+  uint8_t rescue;                       // 0x1B
+  uint8_t ballista_trap;                // 0x1C
+  int8_t bonus_mov;                     // 0x1D
+  uint16_t items[kUnitItemCount];       // 0x1E
+  uint8_t wexp[kUnitWexpCount];         // 0x28
+  uint8_t status : 4;                   // 0x30
   uint8_t status_duration : 4;
-  uint8_t torch_duration : 4;                  // +0x31
-  uint8_t barrier_duration : 4;
-  uint8_t supports[7];                         // +0x32
-  uint8_t support_bits;                        // +0x39
-  uint8_t pad_3a[2];                           // +0x3A
-  GbaPtr<void> map_sprite_handle;              // +0x3C
-  uint16_t ai_3_and_4;                         // +0x40
-  uint8_t ai_1;                                // +0x42
-  uint8_t ai_1_data;                           // +0x43
-  uint8_t ai_2;                                // +0x44
-  uint8_t ai_2_data;                           // +0x45
-  uint8_t unk_46;                              // +0x46
-  uint8_t unk_47;                              // +0x47
+  uint8_t torch : 4;                    // 0x31
+  uint8_t barrier : 4;
+  uint8_t supports[kUnitSupportCount];  // 0x32
+  uint8_t support_bits;                 // 0x39
+  uint8_t pad_3a[2];                    // 0x3A
+  GbaPtr<UnitSprite> map_sprite;        // 0x3C
+  uint16_t ai_config;                   // 0x40
+  uint8_t ai_a;                         // 0x42
+  uint8_t ai_a_pc;                      // 0x43
+  uint8_t ai_b;                         // 0x44
+  uint8_t ai_b_pc;                      // 0x45
+  uint8_t unk_46;                       // 0x46
+  uint8_t pad_47;                       // 0x47
 };
 
-static_assert(sizeof(Unit) == 0x48, "Unit struct size must match FE7 US");
-static_assert(offsetof(Unit, items) == 0x1E, "Unit::items offset mismatch");
-static_assert(offsetof(Unit, map_sprite_handle) == 0x3C, "Unit::map_sprite_handle offset mismatch");
+static_assert(sizeof(Unit) == 0x48, "Unit must be 0x48 bytes");
+static_assert(offsetof(Unit, items) == 0x1E);
+static_assert(offsetof(Unit, map_sprite) == 0x3C);
+static_assert(std::is_trivially_copyable_v<Unit>);
 
 }  // namespace fe7
 
 #endif  // FE7_GAME_UNIT_H_
 ```
 
-#### [NEW] `game/` (Decompilation Waves)
+#### `game/` (Decompilation Waves)
 
-| Wave | Directory | Scope | Strategy |
+| Wave | Directory | Scope | Status & Strategy |
 | :--- | :--- | :--- | :--- |
-| **Wave 1** | `game/engine/` | `main`, `proc`, `rng`, `hardware`, `dma`, `oam`, `bg`, `irq` (~10%) | Port from `fireemblem8u` + verify FE7 US addresses. Unlocks native `Proc` loop early. |
-| **Wave 2** | `game/audio/` | `m4a` C driver + clean C++ `SoundMainRam` mixer + `libc`/BIOS wrappers (~10%) | Port `m4a` from `fireemblem8u`; replace hand-written ARM `SoundMainRAM` with clean C++ FIFO mixer (plus Phase 5 48 kHz seam); map `newlib`/`libgcc` to standard C++. |
-| **Wave 3** | `game/core/` | `bmunit`, `bmitem`, `bmmap`, `bmbattle`, `bmsave` (~25%) | High FE8U/FE6J overlap; locks down core gameplay structs and combat/RNG accuracy. |
+| **Wave 1** | `game/engine/` | `rng` (10 fns), `clock` (4 fns), `proc` (23 fns + 26-opcode interpreter), plus `hardware`, `dma`, `oam`, `bg`, `irq`, `main` (~10%) | **In Progress** (`rng`, `clock`, `proc` complete & differentially verified). Unlocks native `Proc` loop early. |
+| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & logic (`unit`, `item`, `map`, `battle`, `save`, ~25%) | **In Progress** (`game/unit/` 25 lookup/lifecycle/stat getters complete & verified; next: `game/item/` & `game/map/`). High FE8U/FE6J overlap. |
+| **Wave 3** | `game/audio/` | `m4a` C driver + clean C++ `SoundMainRAM` mixer + `libc`/BIOS wrappers (~10%) | Planned after core gameplay (libmgba's APU runs `m4a` cleanly in fallback during Waves 1–2). |
 | **Wave 4** | `game/ai/` | `cp_*` enemy AI, phase flow, fog, weather, magic seal, tactician/ranks, supports (~15%) | Hybrid FE8U port + Ghidra MCP for FE7-exclusive mechanics. |
 | **Wave 5** | `game/ui/` | `talk`, `face`, `font`, menus, prep screen, shop, arena, world map, event interpreter, Lyn tutorials, Link Arena UI (~20%) | Use `kViewportWidth`/`kViewportHeight` and `hal::TextHookDrawGlyph` seams; stub low-level SIO via `hal::link`. |
 | **Wave 6** | `game/banim/` | `ekrbattle`, `efx`, spell scripts, Quintessence, Fire Dragon, CGs, sound room, credits (~20%) | Highly parallelizable state-machine procs across agent PR batches. |
@@ -368,34 +381,38 @@ static_assert(offsetof(Unit, map_sprite_handle) == 0x3C, "Unit::map_sprite_handl
 
 ### Automated Tests
 
-1. **Phase 1 Mock Unit Test Suite (runs immediately with zero retail ROM):**
+1. **Synthetic Unit Test & Lint Suite (runs in CI with zero retail ROM):**
    ```bash
-   bazel test --config=asan //runtime/...
+   bazel test --config=asan --config=headless //...
+   python3 tools/check_format.py
    python3 tools/check_agent_rules.py
-   run-clang-tidy -p . runtime/ game/
+   python3 -m unittest discover -s tools -p '*_test.py' -v
    ```
-   Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, and mock differential comparison.
+   Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, `DiffFunction` harness, canonical `game/` header `static_assert`s, and unit tests for every decompiled subsystem.
 
-2. **Per-PR Differential & Fuzz Verification (Phases 2–4, once ROM is staged):**
+2. **Per-PR Live Differential & Fuzz Verification (Phases 2–4, with local retail ROM):**
    ```bash
-   python3 tools/verify_fn.py --rom <path_to_rom> --changed-files --fuzz-iters 256
-   ```
-   Asserts 100% exact `r0` return values, byte-identical EWRAM/IWRAM/MMIO diffs vs. original Thumb in `libmgba`, and zero ASan/UBSan violations.
-
-3. **Short Headless TAS Smoke Test (every PR, ~5s):**
-   ```bash
-   bazel run --config=asan --config=headless //runtime:fe7_headless -- \
+   bazel run --config=headless //runtime:fe7_diff -- \
      --rom=<path_to_rom> \
-     --tas=tests/tas/prologue_to_ch2.tas \
-     --verify_checkpoints=tests/tas/golden_prologue_ch2.json
+     --traces=/tmp/wave.fe7t \
+     --fuzz_iters=256
    ```
+   Asserts 100% exact `r0` return values (for non-void functions) and byte-identical EWRAM + static IWRAM (`0x03000000..0x030077FF`) vs. original Thumb in `libmgba`.
 
-4. **Full-Game Lockstep Suite (per milestone & Phase 4 gate):**
+3. **Headless Boot & Checkpoint Verification:**
+   ```bash
+   bazel run --config=headless //runtime:fe7_headless -- \
+     --rom=<path_to_rom> \
+     --frames=120 \
+     --dump_checkpoints
+   ```
+   Compares EWRAM, static IWRAM, and framebuffer FNV-1a hashes between `--register_native=false` (pure fallback) and `--register_native=true` (native C++20 active).
+
+4. **Full-Game Lockstep Suite (Phase 4 gate):**
    ```bash
    bazel run --config=release --config=headless //runtime:fe7_headless -- \
      --rom=<path_to_rom> \
-     --tas_suite=tests/tas/full_game_suite.json \
-     --lockstep_mgba \
+     --report_fallbacks \
      --assert_zero_fallbacks
    ```
 
