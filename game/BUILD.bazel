@@ -16,6 +16,15 @@ fe7_game_cc_library(
 )
 
 fe7_game_cc_library(
+    name = "battle_hdr",
+    hdrs = ["battle.h"],
+    deps = [
+        ":unit_hdr",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_game_cc_library(
     name = "item_hdr",
     hdrs = ["item.h"],
     deps = ["//runtime:gba_ptr"],
@@ -31,6 +40,7 @@ fe7_cc_test(
     name = "headers_test",
     srcs = ["headers_test.cc"],
     deps = [
+        ":battle_hdr",
         ":item_hdr",
         ":proc_hdr",
         ":unit_hdr",
@@ -43,10 +53,12 @@ fe7_game_cc_library(
     srcs = ["register_all.cc"],
     hdrs = ["register_all.h"],
     deps = [
+        "//game/battle:battle",
         "//game/engine:clock",
         "//game/engine:proc",
         "//game/engine:rng",
         "//game/item:item",
+        "//game/map:map",
         "//game/unit:unit",
     ],
 )
