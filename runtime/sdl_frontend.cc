@@ -8,6 +8,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
+#include "game/register_all.h"
 #include "runtime/gba_hal.h"
 #include "runtime/rom_loader.h"
 
@@ -140,6 +141,7 @@ int main(int argc, char** argv) {
     std::cerr << "Error: failed to initialize GbaHal\n";
     return 1;
   }
+  fe7::RegisterAllNativeFunctions();
 
   const std::string save_path = absl::GetFlag(FLAGS_save);
   TryLoadSaveFile(save_path);

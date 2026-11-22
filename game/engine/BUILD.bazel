@@ -1,0 +1,29 @@
+# Core engine subsystems (RNG, Proc, Math, etc.).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "rng",
+    srcs = ["rng.cc"],
+    hdrs = ["rng.h"],
+    deps = [
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "rng_test",
+    srcs = ["rng_test.cc"],
+    deps = [
+        ":rng",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)

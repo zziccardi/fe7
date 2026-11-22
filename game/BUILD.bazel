@@ -1,4 +1,39 @@
 # Decompiled game subsystems and canonical headers (Phase 3+).
 # Targets here may only depend on //game/... and
 # //runtime:{gba_ptr,gba_hal,dispatch}.
-package(default_visibility = ["//runtime:__subpackages__"])
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "proc_hdr",
+    hdrs = ["proc.h"],
+    deps = ["//runtime:gba_ptr"],
+)
+
+fe7_game_cc_library(
+    name = "unit_hdr",
+    hdrs = ["unit.h"],
+    deps = ["//runtime:gba_ptr"],
+)
+
+fe7_cc_test(
+    name = "headers_test",
+    srcs = ["headers_test.cc"],
+    deps = [
+        ":proc_hdr",
+        ":unit_hdr",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "register_all",
+    srcs = ["register_all.cc"],
+    hdrs = ["register_all.h"],
+    deps = ["//game/engine:rng"],
+)
