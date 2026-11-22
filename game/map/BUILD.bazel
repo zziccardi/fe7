@@ -57,3 +57,34 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ballista",
+    srcs = ["ballista.cc"],
+    hdrs = ["ballista.h"],
+    deps = [
+        ":trap",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/phase:phase",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ballista_test",
+    srcs = ["ballista_test.cc"],
+    deps = [
+        ":ballista",
+        ":trap",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/phase:phase",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)

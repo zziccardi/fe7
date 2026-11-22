@@ -15,6 +15,7 @@
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item/item.h"
+#include "game/map/ballista.h"
 #include "game/map/map.h"
 #include "game/map/trap.h"
 #include "game/phase/phase.h"
@@ -34,6 +35,7 @@ void RegisterAllNativeFunctions() {
   RegisterBattleExpFunctions();
   RegisterMapFunctions();
   RegisterTrapFunctions();
+  RegisterBallistaFunctions();
   RegisterPhaseFunctions();
   RegisterSupportFunctions();
   RegisterAiFunctions();

@@ -69,6 +69,7 @@ fe7_game_cc_library(
         "//game/engine:proc",
         "//game/engine:rng",
         "//game/item:item",
+        "//game/map:ballista",
         "//game/map:map",
         "//game/map:trap",
         "//game/phase:phase",

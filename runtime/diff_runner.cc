@@ -32,6 +32,7 @@
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item/item.h"
+#include "game/map/ballista.h"
 #include "game/map/map.h"
 #include "game/map/trap.h"
 #include "game/phase/phase.h"
@@ -78,6 +79,7 @@ enum class FuzzMode {
   kAiActionState,
   kAiCombatState,
   kAiCpState,
+  kBallistaState,
   kTracesOnly,
 };
 
@@ -972,6 +974,21 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kAiCpState},
     {"CpPerformWaitSteal", fe7::kAddrCpPerformWaitSteal, true,
      FuzzMode::kAiCpState},
+    // Group 1: Ballista trap helpers (8).
+    {"GetBallistaAt", fe7::kAddrGetBallistaAt, true, FuzzMode::kBallistaState},
+    {"GetBallistaItemAtPos", fe7::kAddrGetBallistaItemAtPos, true,
+     FuzzMode::kBallistaState},
+    {"GetBallistaItemAtIgnoreUses", fe7::kAddrGetBallistaItemAtIgnoreUses, true,
+     FuzzMode::kBallistaState},
+    {"AddBallista", fe7::kAddrAddBallista, true, FuzzMode::kBallistaState},
+    {"UnitRideBallista", fe7::kAddrUnitRideBallista, false,
+     FuzzMode::kBallistaState},
+    {"TryRemoveUnitFromBallista", fe7::kAddrTryRemoveUnitFromBallista, false,
+     FuzzMode::kBallistaState},
+    {"IsBallistaTrap", fe7::kAddrIsBallistaTrap, true,
+     FuzzMode::kBallistaState},
+    {"GetBallistaItemFromTrap", fe7::kAddrGetBallistaItemFromTrap, true,
+     FuzzMode::kBallistaState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -3793,6 +3810,19 @@ std::vector<fe7::TraceRecord> MakeAiCpTraces(uint32_t gba_addr, size_t count) {
     std::memcpy(rec.ewram.data() + (fe7::kAiDecisionAddr - 0x02000000u), &dec,
                 sizeof(dec));
 
+    // Seed a ballista trap at (dec.x_move, dec.y_move) so
+    // CpPerformRideBallista -> UnitRideBallista finds a valid trap.
+    if (gba_addr == fe7::kAddrCpPerformRideBallista) {
+      fe7::Trap bt{};
+      bt.x = dec.x_move;
+      bt.y = dec.y_move;
+      bt.type = static_cast<uint8_t>(fe7::TrapType::kBallista);
+      bt.extra = 0x35u;
+      bt.data[2] = 5u;
+      std::memcpy(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), &bt,
+                  sizeof(bt));
+    }
+
     // Clear gActionData.
     std::memset(rec.ewram.data() + (fe7::kAiActionDataAddr - 0x02000000u), 0,
                 0x20u);
@@ -3818,6 +3848,87 @@ std::vector<fe7::TraceRecord> MakeAiCpTraces(uint32_t gba_addr, size_t count) {
       case fe7::kAddrCpPerformWaitSteal:
         rec.regs[0] = proc_addr;
         break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+std::vector<fe7::TraceRecord> MakeBallistaTraces(uint32_t gba_addr,
+                                                 size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x0BA1157Au ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    const uint32_t trap_off = fe7::kTrapArrayAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + trap_off, 0, 65u * sizeof(fe7::Trap));
+
+    // Seed 2 traps: slot 0 is a ballista at (3, 4), slot 1 is a fire trap at
+    // (5, 5).
+    fe7::Trap t0{};
+    t0.x = 3u;
+    t0.y = 4u;
+    t0.type = static_cast<uint8_t>(fe7::TrapType::kBallista);
+    t0.extra = (NextXorshift(rng) % 4u == 0u) ? 0u : 0x35u;
+    t0.data[1] = 0u;
+    t0.data[2] = static_cast<uint8_t>(NextXorshift(rng) % 6u);
+    std::memcpy(rec.ewram.data() + trap_off, &t0, sizeof(t0));
+
+    fe7::Trap t1{};
+    t1.x = 5u;
+    t1.y = 5u;
+    t1.type = static_cast<uint8_t>(fe7::TrapType::kFire);
+    t1.extra = 2u;
+    std::memcpy(rec.ewram.data() + trap_off + sizeof(fe7::Trap), &t1,
+                sizeof(t1));
+
+    // Populate enemy unit 0x81 at (3, 4).
+    const uint32_t unit_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_off, rng);
+    fe7::Unit u{};
+    std::memcpy(&u, rec.ewram.data() + unit_off, sizeof(u));
+    u.id = static_cast<int8_t>(0x81);
+    u.x = 3;
+    u.y = 4;
+    u.flags = (NextXorshift(rng) & 1u) ? fe7::kUnitFlagInBallista : 0u;
+    u.ballista_trap = 0u;
+    std::memcpy(rec.ewram.data() + unit_off, &u, sizeof(u));
+
+    switch (gba_addr) {
+      case fe7::kAddrGetBallistaAt:
+      case fe7::kAddrGetBallistaItemAtPos:
+      case fe7::kAddrGetBallistaItemAtIgnoreUses: {
+        const uint32_t sel = NextXorshift(rng) % 3u;
+        rec.regs[0] = (sel == 0u) ? 3u : (sel == 1u ? 5u : 1u);
+        rec.regs[1] = (sel == 0u) ? 4u : (sel == 1u ? 5u : 1u);
+        break;
+      }
+      case fe7::kAddrAddBallista:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[1] = 1u + (NextXorshift(rng) % 6u);
+        rec.regs[2] = 0x35u + (NextXorshift(rng) % 3u);
+        break;
+      case fe7::kAddrUnitRideBallista:
+      case fe7::kAddrTryRemoveUnitFromBallista:
+        rec.regs[0] = fe7::GetUnit(0x81).addr;
+        break;
+      case fe7::kAddrIsBallistaTrap:
+      case fe7::kAddrGetBallistaItemFromTrap: {
+        const uint32_t sel = NextXorshift(rng) % 3u;
+        rec.regs[0] =
+            (sel == 0u)
+                ? 0u
+                : (fe7::kTrapArrayAddr + (sel - 1u) * sizeof(fe7::Trap));
+        break;
+      }
       default:
         break;
     }
@@ -4016,6 +4127,12 @@ int main(int argc, char** argv) {
       case FuzzMode::kAiCpState: {
         auto cp_traces = MakeAiCpTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, cp_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kBallistaState: {
+        auto bal_traces = MakeBallistaTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, bal_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }
