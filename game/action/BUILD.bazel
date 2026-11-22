@@ -1,0 +1,46 @@
+# Unit actions, rescue/drop/give, autoleveling, item consumption & stat boosts.
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+    "//testing:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "action",
+    srcs = ["action.cc"],
+    hdrs = ["action.h"],
+    deps = [
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/battle:battle_exp",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/support:support",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "action_test",
+    srcs = ["action_test.cc"],
+    deps = [
+        ":action",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:gba_ptr",
+    ],
+)

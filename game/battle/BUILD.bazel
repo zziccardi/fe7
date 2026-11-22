@@ -82,6 +82,7 @@ fe7_game_cc_library(
         "//game:unit_hdr",
         "//game/engine:rng",
         "//game/item:item",
+        "//game/map:trap",
         "//game/unit:unit",
         "//runtime:dispatch",
         "//runtime:gba_ptr",

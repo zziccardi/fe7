@@ -29,3 +29,31 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "trap",
+    srcs = ["trap.cc"],
+    hdrs = ["trap.h"],
+    deps = [
+        ":map",
+        "//game:unit_hdr",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "trap_test",
+    srcs = ["trap_test.cc"],
+    deps = [
+        ":map",
+        ":trap",
+        "//game:unit_hdr",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:gba_ptr",
+    ],
+)
