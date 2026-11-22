@@ -21,6 +21,9 @@ namespace fe7 {
 inline constexpr uint32_t kBattleStatsAddr = 0x0203A3D8u;
 inline constexpr uint32_t kBattleActorAddr = 0x0203A3F0u;
 inline constexpr uint32_t kBattleTargetAddr = 0x0203A470u;
+inline constexpr uint32_t kBattleHitsAddr = 0x0203A4F0u;
+inline constexpr uint32_t kBattleHitItAddr = 0x0203A50Cu;
+inline constexpr int kBattleHitMaxCount = 7;
 
 // Battle configuration flags stored in BattleStats::config.
 inline constexpr uint16_t kBattleConfigReal = 1u << 0;
@@ -33,6 +36,36 @@ inline constexpr uint16_t kBattleConfigRefresh = 1u << 6;
 inline constexpr uint16_t kBattleConfigMapAnims = 1u << 7;
 inline constexpr uint16_t kBattleConfigPromotionPrep = 1u << 8;
 inline constexpr uint16_t kBattleConfigDanceRing = 1u << 9;
+
+// Hit attribute bitmask stored in BattleHit::attributes.
+inline constexpr uint16_t kBattleHitAttrCrit = 1u << 0;
+inline constexpr uint16_t kBattleHitAttrMiss = 1u << 1;
+inline constexpr uint16_t kBattleHitAttrFollowUp = 1u << 2;
+inline constexpr uint16_t kBattleHitAttrRetaliation = 1u << 3;
+inline constexpr uint16_t kBattleHitAttrBrave = 1u << 4;
+inline constexpr uint16_t kBattleHitAttrPoison = 1u << 6;
+inline constexpr uint16_t kBattleHitAttrDevil = 1u << 7;
+inline constexpr uint16_t kBattleHitAttrHpSteal = 1u << 8;
+inline constexpr uint16_t kBattleHitAttrHalfHp = 1u << 9;
+inline constexpr uint16_t kBattleHitAttrTAttack = 1u << 10;
+inline constexpr uint16_t kBattleHitAttrSilencer = 1u << 11;
+
+// Hit info bitmask stored in BattleHit::info.
+inline constexpr uint8_t kBattleHitInfoBegin = 1u << 0;
+inline constexpr uint8_t kBattleHitInfoKills = 1u << 1;
+inline constexpr uint8_t kBattleHitInfoKillsTarget = 1u << 2;
+inline constexpr uint8_t kBattleHitInfoRetaliation = 1u << 3;
+inline constexpr uint8_t kBattleHitInfoEnd = 1u << 7;
+
+// Single combat round entry in `gBattleHitArray` (0x0203A4F0, 7 x 4 bytes).
+struct BattleHit {
+  uint16_t attributes;  // 0x00: kBattleHitAttr* bitmask
+  uint8_t info;         // 0x02: kBattleHitInfo* bitmask
+  int8_t hp_change;     // 0x03: Damage dealt (or HP changed)
+};
+
+static_assert(sizeof(BattleHit) == 4);
+static_assert(std::is_trivially_copyable_v<BattleHit>);
 
 // Single entry in FE7's ROM weapon triangle table (`0x08B9426C`, 4 bytes).
 struct WeaponTriangleRule {

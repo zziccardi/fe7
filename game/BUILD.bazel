@@ -54,6 +54,7 @@ fe7_game_cc_library(
     hdrs = ["register_all.h"],
     deps = [
         "//game/battle:battle",
+        "//game/battle:battle_sim",
         "//game/engine:clock",
         "//game/engine:proc",
         "//game/engine:rng",

@@ -18,6 +18,7 @@
 #include "absl/flags/usage.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
+#include "game/battle/battle_sim.h"
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
@@ -51,6 +52,7 @@ enum class FuzzMode {
   kItemAndUnit,
   kValidItemInR0,
   kBattlePair,
+  kBattleSim,
   kMapState,
   kTracesOnly,
 };
@@ -258,6 +260,46 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kMapState},
     {"MapAddInRange", fe7::kAddrMapAddInRange, false, FuzzMode::kMapState},
     {"MapSetInRange", fe7::kAddrMapSetInRange, false, FuzzMode::kMapState},
+    // Wave 3: Battle Simulation (0x0802857C..0x0802ABA0)
+    {"BattleRoll1RN", fe7::kAddrBattleRoll1RN, true, FuzzMode::kBattleSim},
+    {"BattleRoll2RN", fe7::kAddrBattleRoll2RN, true, FuzzMode::kBattleSim},
+    {"InitBattleUnit", fe7::kAddrInitBattleUnit, false, FuzzMode::kBattleSim},
+    {"InitBattleUnitWithoutBonuses", fe7::kAddrInitBattleUnitWithoutBonuses,
+     false, FuzzMode::kBattleSim},
+    {"ClearBattleHits", fe7::kAddrClearBattleHits, false, FuzzMode::kBattleSim},
+    {"BattleUnwind", fe7::kAddrBattleUnwind, false, FuzzMode::kBattleSim},
+    {"BattleGetBattleUnitOrder", fe7::kAddrBattleGetBattleUnitOrder, false,
+     FuzzMode::kBattleSim},
+    {"BattleGetFollowUpOrder", fe7::kAddrBattleGetFollowUpOrder, true,
+     FuzzMode::kBattleSim},
+    {"BattleGenerateRoundHits", fe7::kAddrBattleGenerateRoundHits, true,
+     FuzzMode::kBattleSim},
+    {"BattleGetEffectiveHitCount", fe7::kAddrBattleGetEffectiveHitCount, true,
+     FuzzMode::kBattleSim},
+    {"BattleCheckBrave", fe7::kAddrBattleCheckBrave, true,
+     FuzzMode::kBattleSim},
+    {"BattleCheckTriangleAttackOrder", fe7::kAddrBattleCheckTriangleAttackOrder,
+     true, FuzzMode::kBattleSim},
+    {"BattleUpdateBattleStats", fe7::kAddrBattleUpdateBattleStats, false,
+     FuzzMode::kBattleSim},
+    {"BattleGenerateHitAttributes", fe7::kAddrBattleGenerateHitAttributes,
+     false, FuzzMode::kBattleSim},
+    {"BattleGenerateHitTriangleAttack",
+     fe7::kAddrBattleGenerateHitTriangleAttack, false, FuzzMode::kBattleSim},
+    {"BattleGenerateHitEffects", fe7::kAddrBattleGenerateHitEffects, false,
+     FuzzMode::kBattleSim},
+    {"BattleGenerateHit", fe7::kAddrBattleGenerateHit, true,
+     FuzzMode::kBattleSim},
+    {"BattleUnitTargetSetEquippedWeapon",
+     fe7::kAddrBattleUnitTargetSetEquippedWeapon, false, FuzzMode::kBattleSim},
+    {"BattleUnitTargetCheckHasRealWeapon",
+     fe7::kAddrBattleUnitTargetCheckHasRealWeapon, false, FuzzMode::kBattleSim},
+    {"BattleInitTargetCanCounter", fe7::kAddrBattleInitTargetCanCounter, false,
+     FuzzMode::kBattleSim},
+    {"BattleHitAdvance", fe7::kAddrBattleHitAdvance, false,
+     FuzzMode::kBattleSim},
+    {"BattleHitTerminate", fe7::kAddrBattleHitTerminate, false,
+     FuzzMode::kBattleSim},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -702,6 +744,169 @@ std::vector<fe7::TraceRecord> MakeMapTraces(uint32_t gba_addr, size_t count) {
   return out;
 }
 
+// Synthesizes full battle simulation state (gBattleActor, gBattleTarget,
+// gBattleStats, gBattleHitArray, gBattleHitIt, gMapUnit, and allied units for
+// Triangle Attack checks) for all 22 Wave 3 Battle Simulation functions.
+std::vector<fe7::TraceRecord> MakeBattleSimTraces(uint32_t gba_addr,
+                                                  size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x51A0BA77u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    // Initialize an 8x8 gMapUnit so Triangle Attack neighbor lookups are safe.
+    constexpr int kMapW = 8;
+    constexpr int kMapH = 8;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kMapW,
+                           kMapH, 0x00u);
+
+    // Populate 3 blue units in gUnitArrayBlue (ids 1..3) so GetUnit(1..3) has
+    // valid ROM PInfo/JInfo (including Pegasus Knight JID 0x35 for TA paths).
+    for (int u = 0; u < 3; ++u) {
+      const uint32_t off = fe7::GetUnit(u + 1).addr - 0x02000000u;
+      PopulateSyntheticUnit(rec.ewram, off, rng);
+      fe7::Unit ally{};
+      std::memcpy(&ally, rec.ewram.data() + off, sizeof(ally));
+      ally.id = static_cast<int8_t>(u + 1);
+      if ((NextXorshift(rng) & 1u) != 0u) {
+        ally.jinfo = fe7::GetJobInfo(0x35);  // Pegasus Knight
+      }
+      ally.status = static_cast<uint8_t>(NextXorshift(rng) % 5u);
+      std::memcpy(rec.ewram.data() + off, &ally, sizeof(ally));
+    }
+
+    // Place allies 1..3 around defender at (4, 4) on gMapUnit.
+    const uint32_t unit_tiles = kUnitMapBufOff + (kMapH + 4u) * 4u;
+    const uint32_t stride = kMapW + 2u;
+    static constexpr int kDx[4] = {-1, 0, 1, 0};
+    static constexpr int kDy[4] = {0, -1, 0, 1};
+    for (int d = 0; d < 4; ++d) {
+      if ((NextXorshift(rng) & 1u) != 0u) {
+        const uint32_t tile_off =
+            static_cast<uint32_t>(4 + kDy[d] + 2) * stride +
+            static_cast<uint32_t>(4 + kDx[d] + 1);
+        rec.ewram[unit_tiles + tile_off] =
+            static_cast<uint8_t>(1u + (NextXorshift(rng) % 3u));
+      }
+    }
+
+    // Populate gBattleActor and gBattleTarget with varied weapons & stats.
+    constexpr uint32_t kActorOff = fe7::kBattleActorAddr - 0x02000000u;
+    constexpr uint32_t kTargetOff = fe7::kBattleTargetAddr - 0x02000000u;
+    for (uint32_t off : {kActorOff, kTargetOff}) {
+      PopulateSyntheticUnit(rec.ewram, off, rng);
+      fe7::BattleUnit bu{};
+      std::memcpy(&bu.unit, rec.ewram.data() + off, sizeof(fe7::Unit));
+      bu.unit.x = 4;
+      bu.unit.y = 4;
+      bu.unit.hp = static_cast<int8_t>(1u + (NextXorshift(rng) % 35u));
+      bu.unit.max_hp =
+          static_cast<int8_t>(static_cast<int>(bu.unit.hp) +
+                              static_cast<int>(NextXorshift(rng) % 15u));
+      bu.unit.id = static_cast<int8_t>((off == kActorOff) ? 0x01 : 0x81);
+      if ((NextXorshift(rng) & 3u) == 0u) {
+        bu.unit.jinfo = fe7::GetJobInfo(0x35);  // Pegasus Knight
+      }
+      bu.unit.status = static_cast<uint8_t>(NextXorshift(rng) % 6u);
+      const uint16_t iid =
+          (NextXorshift(rng) % 5u == 0u)
+              ? 0u
+              : static_cast<uint16_t>(1u + (NextXorshift(rng) % 0x60u));
+      bu.weapon = iid == 0u ? 0u : static_cast<uint16_t>((0x14u << 8) | iid);
+      bu.weapon_before = (NextXorshift(rng) & 1u) ? bu.weapon : 0u;
+      bu.weapon_attributes = fe7::GetItemAttributes(bu.weapon);
+      bu.weapon_type = static_cast<uint8_t>(fe7::GetItemKind(bu.weapon));
+      bu.can_counter = static_cast<int8_t>(NextXorshift(rng) & 1u);
+      bu.battle_attack = static_cast<int16_t>(NextXorshift(rng) % 35u);
+      bu.battle_defense = static_cast<int16_t>(NextXorshift(rng) % 25u);
+      bu.battle_speed = static_cast<int16_t>(NextXorshift(rng) % 26u);
+      bu.battle_effective_hit_rate =
+          static_cast<int16_t>(NextXorshift(rng) % 105u);
+      bu.battle_effective_crit_rate =
+          static_cast<int16_t>(NextXorshift(rng) % 50u);
+      bu.battle_silencer_rate = static_cast<int16_t>(NextXorshift(rng) % 50u);
+      std::memcpy(rec.ewram.data() + off, &bu, sizeof(fe7::BattleUnit));
+    }
+
+    // Initialize gBattleStats and gBattleHitArray / gBattleHitIt.
+    fe7::BattleStats stats{};
+    stats.config = static_cast<uint16_t>(
+        ((NextXorshift(rng) & 1u) ? fe7::kBattleConfigSimulate
+                                  : fe7::kBattleConfigReal) |
+        ((NextXorshift(rng) & 7u) == 0u ? fe7::kBattleConfigArena : 0u));
+    stats.range = static_cast<uint8_t>(1u + (NextXorshift(rng) & 1u));
+    stats.attack = static_cast<int16_t>(NextXorshift(rng) % 35u);
+    stats.defense = static_cast<int16_t>(NextXorshift(rng) % 25u);
+    stats.hit_rate = static_cast<int16_t>(NextXorshift(rng) % 105u);
+    stats.crit_rate = static_cast<int16_t>(NextXorshift(rng) % 50u);
+    stats.silencer_rate = static_cast<int16_t>(NextXorshift(rng) % 50u);
+    stats.damage = static_cast<int16_t>(NextXorshift(rng) % 30u);
+    std::memcpy(rec.ewram.data() + (fe7::kBattleStatsAddr - 0x02000000u),
+                &stats, sizeof(stats));
+
+    const uint32_t hits_off = fe7::kBattleHitsAddr - 0x02000000u;
+    std::memset(rec.ewram.data() + hits_off, 0,
+                sizeof(fe7::BattleHit) * fe7::kBattleHitMaxCount);
+    fe7::BattleHit initial_hit{};
+    initial_hit.info = (NextXorshift(rng) & 1u) ? fe7::kBattleHitInfoBegin : 0u;
+    std::memcpy(rec.ewram.data() + hits_off, &initial_hit, sizeof(initial_hit));
+    const uint32_t hit_it = fe7::kBattleHitsAddr;
+    std::memcpy(rec.ewram.data() + (fe7::kBattleHitItAddr - 0x02000000u),
+                &hit_it, sizeof(hit_it));
+
+    // Scratch Unit and out-pointer slots in EWRAM.
+    constexpr uint32_t kScratchUnitOff = 0x16000u;
+    constexpr uint32_t kOutPtrAOff = 0x16100u;
+    constexpr uint32_t kOutPtrBOff = 0x16104u;
+    PopulateSyntheticUnit(rec.ewram, kScratchUnitOff, rng);
+
+    switch (gba_addr) {
+      case fe7::kAddrBattleRoll1RN:
+      case fe7::kAddrBattleRoll2RN:
+        rec.regs[0] = NextXorshift(rng) % 120u;
+        rec.regs[1] = NextXorshift(rng) & 1u;
+        break;
+      case fe7::kAddrInitBattleUnit:
+      case fe7::kAddrInitBattleUnitWithoutBonuses:
+        rec.regs[0] = fe7::kBattleActorAddr;
+        rec.regs[1] = 0x02000000u + kScratchUnitOff;
+        break;
+      case fe7::kAddrBattleGetBattleUnitOrder:
+      case fe7::kAddrBattleGetFollowUpOrder:
+        rec.regs[0] = 0x02000000u + kOutPtrAOff;
+        rec.regs[1] = 0x02000000u + kOutPtrBOff;
+        break;
+      case fe7::kAddrBattleGenerateRoundHits:
+      case fe7::kAddrBattleCheckTriangleAttackOrder:
+      case fe7::kAddrBattleUpdateBattleStats:
+      case fe7::kAddrBattleGenerateHitTriangleAttack:
+      case fe7::kAddrBattleGenerateHitEffects:
+      case fe7::kAddrBattleGenerateHit:
+        rec.regs[0] = fe7::kBattleActorAddr;
+        rec.regs[1] = fe7::kBattleTargetAddr;
+        break;
+      case fe7::kAddrBattleGetEffectiveHitCount:
+      case fe7::kAddrBattleCheckBrave:
+      case fe7::kAddrBattleGenerateHitAttributes:
+      case fe7::kAddrBattleUnitTargetSetEquippedWeapon:
+      case fe7::kAddrBattleUnitTargetCheckHasRealWeapon:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? fe7::kBattleActorAddr
+                                               : fe7::kBattleTargetAddr;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -808,6 +1013,12 @@ int main(int argc, char** argv) {
         auto battle_traces = MakeBattleUnitTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, battle_traces, 0,
                                 0xFE700001u, opts);
+        break;
+      }
+      case FuzzMode::kBattleSim: {
+        auto sim_traces = MakeBattleSimTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, sim_traces, 0, 0xFE700001u,
+                                opts);
         break;
       }
       case FuzzMode::kMapState: {
