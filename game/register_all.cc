@@ -1,6 +1,7 @@
 #include "game/register_all.h"
 
 #include "game/battle/battle.h"
+#include "game/battle/battle_exp.h"
 #include "game/battle/battle_sim.h"
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
@@ -20,6 +21,7 @@ void RegisterAllNativeFunctions() {
   RegisterItemFunctions();
   RegisterBattleFunctions();
   RegisterBattleSimFunctions();
+  RegisterBattleExpFunctions();
   RegisterMapFunctions();
   RegisterPhaseFunctions();
 }
