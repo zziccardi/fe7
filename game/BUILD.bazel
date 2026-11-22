@@ -35,5 +35,9 @@ fe7_game_cc_library(
     name = "register_all",
     srcs = ["register_all.cc"],
     hdrs = ["register_all.h"],
-    deps = ["//game/engine:rng"],
+    deps = [
+        "//game/engine:clock",
+        "//game/engine:proc",
+        "//game/engine:rng",
+    ],
 )
