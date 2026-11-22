@@ -19,6 +19,7 @@
 #include "game/action/action.h"
 #include "game/ai/ai.h"
 #include "game/ai/ai_decide.h"
+#include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
@@ -70,6 +71,7 @@ enum class FuzzMode {
   kActionState,
   kAiDecideState,
   kAiScriptState,
+  kAiOpcodeState,
   kTracesOnly,
 };
 
@@ -729,6 +731,88 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kAiScriptState},
     {"AiIsUnitEnemyWithJid", fe7::kAddrAiIsUnitEnemyWithJid, true,
      FuzzMode::kAiScriptState},
+    // AI Script Opcodes (0x04..0x1B) & Movement/Target-Search Helpers (41).
+    {"AiTryFindUnitByPid", fe7::kAddrAiTryFindUnitByPid, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiTryFindClosestUnitMatching", fe7::kAddrAiTryFindClosestUnitMatching,
+     true, FuzzMode::kAiOpcodeState},
+    {"AiTryFindClosestUnitMatchingNoDoors",
+     fe7::kAddrAiTryFindClosestUnitMatchingNoDoors, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestTerrainInList", fe7::kAddrAiFindNearestTerrainInList, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestAdjacentToTerrainInList",
+     fe7::kAddrAiFindNearestAdjacentToTerrainInList, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestDoorOrChest", fe7::kAddrAiFindNearestDoorOrChest, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindBestAdjacentPosition", fe7::kAddrAiFindBestAdjacentPosition, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestLootableTile", fe7::kAddrAiFindNearestLootableTile, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiMoveTowards", fe7::kAddrAiMoveTowards, false, FuzzMode::kTracesOnly},
+    {"AiMoveTowardsNoDoors", fe7::kAddrAiMoveTowardsNoDoors, false,
+     FuzzMode::kTracesOnly},
+    {"AiScriptCmdAttackPid", fe7::kAddrAiScriptCmdAttackPid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttack", fe7::kAddrAiScriptCmdAttack, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop06", fe7::kAddrAiScriptCmdNop06, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttackInPlace", fe7::kAddrAiScriptCmdAttackInPlace, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttackJid", fe7::kAddrAiScriptCmdAttackJid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAction09", fe7::kAddrAiScriptCmdAction09, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAction0A", fe7::kAddrAiScriptCmdAction0A, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAction0B", fe7::kAddrAiScriptCmdAction0B, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToCoord", fe7::kAddrAiScriptCmdMoveToCoord, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToPid", fe7::kAddrAiScriptCmdMoveToPid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop0E", fe7::kAddrAiScriptCmdNop0E, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToJid", fe7::kAddrAiScriptCmdMoveToJid, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdLoot", fe7::kAddrAiScriptCmdLoot, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToSafe", fe7::kAddrAiScriptCmdMoveToSafe, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToEnemy", fe7::kAddrAiScriptCmdMoveToEnemy, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToEnemyNoDoors", fe7::kAddrAiScriptCmdMoveToEnemyNoDoors,
+     false, FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop14", fe7::kAddrAiScriptCmdNop14, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdNop15", fe7::kAddrAiScriptCmdNop15, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveRandom", fe7::kAddrAiScriptCmdMoveRandom, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdEscape", fe7::kAddrAiScriptCmdEscape, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiGetObstacleAttackPosScore", fe7::kAddrAiGetObstacleAttackPosScore, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindBestObstacleAttackPos", fe7::kAddrAiFindBestObstacleAttackPos, true,
+     FuzzMode::kAiOpcodeState},
+    {"AiFindNearestObstacleTerrain", fe7::kAddrAiFindNearestObstacleTerrain,
+     true, FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdAttackObstacle", fe7::kAddrAiScriptCmdAttackObstacle, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToTerrain", fe7::kAddrAiScriptCmdMoveToTerrain, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdMoveToTerrainList", fe7::kAddrAiScriptCmdMoveToTerrainList,
+     false, FuzzMode::kAiOpcodeState},
+    {"AiScriptCmdLabel", fe7::kAddrAiScriptCmdLabel, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiBerserkAction", fe7::kAddrAiBerserkAction, false,
+     FuzzMode::kAiOpcodeState},
+    {"AiBerserkMove", fe7::kAddrAiBerserkMove, false, FuzzMode::kAiOpcodeState},
+    {"AiReturnTrue", fe7::kAddrAiReturnTrue, true, FuzzMode::kAiOpcodeState},
+    {"AiCheckJobRankAndReturnTrue", fe7::kAddrAiCheckJobRankAndReturnTrue, true,
+     FuzzMode::kAiOpcodeState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -2700,6 +2784,239 @@ std::vector<fe7::TraceRecord> MakeAiScriptTraces(uint32_t gba_addr,
   return out;
 }
 
+// Synthesizes valid 8x8 padded maps (with 4-tile padding on gMapUnit), live
+// units, AI combat score coefficients, traps, script commands, and scratch
+// buffers for the 41 AI opcode & movement/target-search functions.
+std::vector<fe7::TraceRecord> MakeAiOpcodeTraces(uint32_t gba_addr,
+                                                 size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x09C0DE55u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+
+    constexpr uint32_t kTerrainBufOff = 0x10000u;
+    constexpr uint32_t kUnitMapBufOff = 0x11000u;
+    constexpr uint32_t kMovMapBufOff = 0x12000u;
+    constexpr uint32_t kRngMapBufOff = 0x13000u;
+    constexpr uint32_t kOtherMapBufOff = 0x14000u;
+    constexpr uint32_t kHiddenMapBufOff = 0x15000u;
+    constexpr uint32_t kScratchOff = 0x16000u;
+    constexpr uint32_t kScratch2Off = 0x16020u;
+    constexpr uint32_t kCmdOff = 0x16040u;
+    constexpr uint32_t kTerrainListOff = 0x16080u;
+    constexpr uint32_t kPidListOff = 0x160A0u;
+    const uint32_t scratch_addr = 0x02000000u + kScratchOff;
+    const uint32_t scratch2_addr = 0x02000000u + kScratch2Off;
+    const uint32_t cmd_addr = 0x02000000u + kCmdOff;
+    const uint32_t tlist_addr = 0x02000000u + kTerrainListOff;
+    const uint32_t pid_list_addr = 0x02000000u + kPidListOff;
+
+    InitSyntheticMapBuffer(rec.ewram, kTerrainBufOff, fe7::kMapTerrainAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kUnitMapBufOff, fe7::kMapUnitAddr, kW, kH,
+                           0x00u, /*pad_rows=*/4, /*pad_cols=*/4);
+    const uint32_t mov_map_addr = InitSyntheticMapBuffer(
+        rec.ewram, kMovMapBufOff, fe7::kMapMovementAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, kRngMapBufOff, fe7::kMapRangeAddr, kW, kH,
+                           0x01u);
+    InitSyntheticMapBuffer(rec.ewram, kOtherMapBufOff, fe7::kAiMapOtherAddr, kW,
+                           kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, kHiddenMapBufOff, fe7::kMapHiddenAddr, kW,
+                           kH, 0x00u);
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &mov_map_addr, sizeof(mov_map_addr));
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    const uint32_t rows = kH + 4u;
+    const uint32_t stride = kW + 2u;
+    const uint32_t unit_rows = kH + 8u;
+    const uint32_t unit_stride = kW + 8u;
+    const uint32_t terrain_tiles = kTerrainBufOff + rows * 4u;
+    const uint32_t unit_tiles = kUnitMapBufOff + unit_rows * 4u;
+    const uint32_t mov_tiles = kMovMapBufOff + rows * 4u;
+    const uint32_t rng_tiles = kRngMapBufOff + rows * 4u;
+    const uint32_t other_tiles = kOtherMapBufOff + rows * 4u;
+
+    static constexpr uint8_t kDoorChestTerrains[6] = {1u,    2u,    0x03u,
+                                                      0x1Eu, 0x21u, 0x1Bu};
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        const uint32_t toff = static_cast<uint32_t>(y + 2) * stride +
+                              static_cast<uint32_t>(x + 1);
+        const uint32_t utoff = static_cast<uint32_t>(y + 4) * unit_stride +
+                               static_cast<uint32_t>(x + 4);
+        rec.ewram[terrain_tiles + toff] =
+            (NextXorshift(rng) % 5u == 0u)
+                ? kDoorChestTerrains[NextXorshift(rng) % 6u]
+                : static_cast<uint8_t>(1u + (NextXorshift(rng) % 2u));
+        const uint32_t u = NextXorshift(rng) % 10u;
+        if (u == 0u) rec.ewram[unit_tiles + utoff] = 0x01u;
+        if (u == 1u) rec.ewram[unit_tiles + utoff] = 0x81u;
+        rec.ewram[mov_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 6u)
+                : 0xFFu;
+        rec.ewram[rng_tiles + toff] =
+            (NextXorshift(rng) & 1u)
+                ? static_cast<uint8_t>(NextXorshift(rng) % 10u)
+                : 0xFFu;
+        rec.ewram[other_tiles + toff] =
+            static_cast<uint8_t>(NextXorshift(rng) & 0x1Fu);
+      }
+    }
+
+    // Clear trap array so GetTrapAt terminates cleanly.
+    std::memset(rec.ewram.data() + (fe7::kTrapArrayAddr - 0x02000000u), 0,
+                65u * sizeof(fe7::Trap));
+
+    // Populate live units: enemy 0x81 (active) and player 0x01.
+    const uint32_t unit_a_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t unit_b_off = fe7::GetUnit(0x01).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, unit_a_off, rng);
+    PopulateSyntheticUnit(rec.ewram, unit_b_off, rng);
+
+    fe7::Unit ua{};
+    std::memcpy(&ua, rec.ewram.data() + unit_a_off, sizeof(ua));
+    ua.id = static_cast<int8_t>(0x81);
+    ua.x = static_cast<int8_t>(1 + (NextXorshift(rng) % (kW - 2)));
+    ua.y = static_cast<int8_t>(1 + (NextXorshift(rng) % (kH - 2)));
+    ua.flags &= ~fe7::kUnitFlagsUnavailable;
+    std::memcpy(rec.ewram.data() + unit_a_off, &ua, sizeof(ua));
+
+    fe7::Unit ub{};
+    std::memcpy(&ub, rec.ewram.data() + unit_b_off, sizeof(ub));
+    ub.id = 0x01;
+    ub.x = static_cast<int8_t>(1 + (NextXorshift(rng) % (kW - 2)));
+    ub.y = static_cast<int8_t>(1 + (NextXorshift(rng) % (kH - 2)));
+    ub.flags &= ~fe7::kUnitFlagsUnavailable;
+    std::memcpy(rec.ewram.data() + unit_b_off, &ub, sizeof(ub));
+
+    const uint8_t target_pid =
+        fe7::gMem.rom[(ub.pinfo.addr - 0x08000000u) + 4u];
+    const uint8_t target_jid =
+        fe7::gMem.rom[(ub.jinfo.addr - 0x08000000u) + 4u];
+
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    const uint32_t ua_addr = 0x02000000u + unit_a_off;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &ua_addr, sizeof(ua_addr));
+
+    // Set gAiCombatScoreCoeffPtr to valid ROM table entry 0.
+    const uint32_t coeff_ptr = fe7::kAiCombatScoreCoeffTableAddr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiScoreCoeffPtrAddr - 0x03000000u),
+                &coeff_ptr, sizeof(coeff_ptr));
+
+    // Valid chapter (0 or 8) and faction (0x80) for escape/AI helpers.
+    rec.ewram[fe7::kAiPlayStatusAddr + 0x0Eu - 0x02000000u] =
+        (NextXorshift(rng) & 1u) ? 8u : 0u;
+    rec.ewram[fe7::kAiPlayStatusAddr + 0x0Fu - 0x02000000u] = 0x80u;
+    rec.ewram[fe7::kAiStateAddr + 0x7Bu - 0x02000000u] =
+        static_cast<uint8_t>(NextXorshift(rng) & 3u);
+    rec.ewram[fe7::kAiStateAddr + 0x7Eu - 0x02000000u] = 0xFFu;
+    rec.ewram[fe7::kAiStateAddr + 0x85u - 0x02000000u] = 6u;
+
+    // Seed terrain list {1, 2, 0} and PID list {target_pid, 0}.
+    const uint8_t tlist[3] = {1u, 2u, 0u};
+    std::memcpy(rec.ewram.data() + kTerrainListOff, tlist, sizeof(tlist));
+    const uint16_t plist[2] = {target_pid, 0u};
+    std::memcpy(rec.ewram.data() + kPidListOff, plist, sizeof(plist));
+    rec.ewram[kScratchOff] = target_jid;
+
+    // Seed synthetic AiScriptCmd at cmd_addr.
+    fe7::AiScriptCmd cmd{};
+    cmd.arg1 = static_cast<uint8_t>(NextXorshift(rng) % 101u);
+    cmd.arg2 = 0xFFu;
+    cmd.arg3 = 1u;  // single-byte terrain list {1, 0} with u32_arg4 low byte 0
+    cmd.u32_arg4 = 0u;
+    cmd.u32_arg8 = (NextXorshift(rng) & 1u) ? 0u : pid_list_addr;
+    if (gba_addr == fe7::kAddrAiScriptCmdMoveToCoord) {
+      cmd.arg1 = static_cast<uint8_t>(NextXorshift(rng) % kW);
+      cmd.arg3 = static_cast<uint8_t>(NextXorshift(rng) % kH);
+    } else if (gba_addr == fe7::kAddrAiScriptCmdMoveToPid ||
+               gba_addr == fe7::kAddrAiScriptCmdAttackPid) {
+      cmd.u32_arg4 = target_pid;
+    } else if (gba_addr == fe7::kAddrAiScriptCmdMoveToJid ||
+               gba_addr == fe7::kAddrAiScriptCmdAttackJid) {
+      cmd.u32_arg4 = target_jid;
+    } else if (gba_addr == fe7::kAddrAiScriptCmdMoveToTerrainList) {
+      cmd.u32_arg8 = tlist_addr;
+    } else if (gba_addr == fe7::kAddrAiScriptCmdLoot) {
+      cmd.arg3 = static_cast<uint8_t>(NextXorshift(rng) % 3u);
+    }
+    std::memcpy(rec.ewram.data() + kCmdOff, &cmd, sizeof(cmd));
+    std::memcpy(rec.iwram.data() + (fe7::kAiScriptCurAddr - 0x03000000u),
+                &cmd_addr, sizeof(cmd_addr));
+    rec.iwram[fe7::kAiScriptDoneAddr - 0x03000000u] = 1u;
+
+    switch (gba_addr) {
+      case fe7::kAddrAiTryFindUnitByPid:
+        rec.regs[0] = target_pid;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiTryFindClosestUnitMatching:
+      case fe7::kAddrAiTryFindClosestUnitMatchingNoDoors:
+        rec.regs[0] = fe7::kAddrAiIsUnitEnemy | 1u;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindNearestTerrainInList:
+      case fe7::kAddrAiFindNearestAdjacentToTerrainInList:
+      case fe7::kAddrAiFindNearestObstacleTerrain:
+        rec.regs[0] = tlist_addr;
+        rec.regs[1] = NextXorshift(rng) & 3u;
+        rec.regs[2] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindNearestDoorOrChest:
+        rec.regs[0] = NextXorshift(rng) & 0xFu;
+        rec.regs[1] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindBestAdjacentPosition:
+        rec.regs[0] = 1u + (NextXorshift(rng) % (kW - 2));
+        rec.regs[1] = 1u + (NextXorshift(rng) % (kH - 2));
+        rec.regs[2] = fe7::kAddrAiGetMoveCostAt | 1u;
+        rec.regs[3] = scratch_addr;
+        break;
+      case fe7::kAddrAiFindNearestLootableTile:
+        rec.regs[0] = scratch_addr;
+        rec.regs[1] = scratch2_addr;
+        break;
+      case fe7::kAddrAiGetObstacleAttackPosScore:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrAiFindBestObstacleAttackPos:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        rec.regs[2] = scratch_addr;
+        rec.regs[3] = scratch2_addr;
+        break;
+      case fe7::kAddrAiCheckJobRankAndReturnTrue:
+        rec.regs[0] = scratch_addr;
+        break;
+      case fe7::kAddrAiBerserkAction:
+      case fe7::kAddrAiBerserkMove:
+      case fe7::kAddrAiReturnTrue:
+        break;
+      default:
+        // All AiScriptCmd* handlers take `GbaPtr<uint8_t> pc_ptr`.
+        rec.regs[0] = ua_addr + 0x43u;
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2866,6 +3183,12 @@ int main(int argc, char** argv) {
         auto script_traces = MakeAiScriptTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, script_traces, 0,
                                 0xFE700001u, opts);
+        break;
+      }
+      case FuzzMode::kAiOpcodeState: {
+        auto op_traces = MakeAiOpcodeTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, op_traces, 0, 0xFE700001u,
+                                opts);
         break;
       }
       case FuzzMode::kTracesOnly:
