@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Clang 18 sanitizer runtime and clang-format
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang libclang-rt-18-dev clang-format
+
+      - name: Cache Bazel repository and build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: bazel-${{ runner.os }}-${{ hashFiles('.bazelversion', 'MODULE.bazel.lock') }}
+          restore-keys: |
+            bazel-${{ runner.os }}-
+
+      - name: Check Google C++ 80-column formatting
+        run: |
+          FILES=$(find runtime game -type f \( -name '*.h' -o -name '*.cc' -o -name '*.c' \) 2>/dev/null || true)
+          if [ -n "$FILES" ]; then
+            clang-format --dry-run --Werror $FILES
+          fi
+
+      - name: Check game/ agent coding rules
+        run: python3 tools/check_agent_rules.py
+
+      - name: Run unit tests (ASan + UBSan + LSan)
+        run: bazel test --config=asan //...
+
+      - name: Build all targets (ASan)
+        run: bazel build --config=asan //...
+
+      - name: Run unit tests (Release + Headless)
+        run: bazel test --config=release --config=headless //...

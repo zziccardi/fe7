@@ -22,6 +22,23 @@ struct RomImage;
 inline constexpr int kViewportWidth = 240;
 inline constexpr int kViewportHeight = 160;
 
+// Output PCM audio sample rate in Hz (stereo signed 16-bit interleaved).
+inline constexpr int kAudioSampleRate = 48000;
+
+// Active-high GBA keypad bitmask constants matching GBA KEYINPUT bit positions.
+enum GbaKey : uint16_t {
+  kKeyA = 1u << 0,
+  kKeyB = 1u << 1,
+  kKeySelect = 1u << 2,
+  kKeyStart = 1u << 3,
+  kKeyRight = 1u << 4,
+  kKeyLeft = 1u << 5,
+  kKeyUp = 1u << 6,
+  kKeyDown = 1u << 7,
+  kKeyR = 1u << 8,
+  kKeyL = 1u << 9,
+};
+
 namespace hal {
 
 // --- Lifecycle & frame execution ---
@@ -37,13 +54,29 @@ bool Init(const RomImage& rom);
 void Shutdown();
 
 // Advances the GBA hardware by one video frame with the given active-high key
-// input bitmask.
+// input bitmask (bitwise OR of GbaKey values).
 void StepFrame(uint16_t key_input);
 
 // Returns a pointer to the latest rendered 32-bit XBGR8888 framebuffer
 // (kViewportWidth * kViewportHeight pixels). Valid while the HAL is
 // initialized.
 const uint32_t* absl_nonnull GetFramebuffer();
+
+// Drains up to `max_frames` stereo signed 16-bit PCM frames (2 int16_t samples
+// per frame, interleaved L/R at kAudioSampleRate) into `out_stereo`. Returns
+// the number of stereo frames actually written.
+size_t ReadAudioSamples(int16_t* absl_nonnull out_stereo, size_t max_frames);
+
+// --- Cartridge save RAM (.sav) persistence ---
+
+// Restores `size` bytes of cartridge save RAM (SRAM/Flash/EEPROM) into the
+// active backend. Returns true on success.
+bool LoadSaveData(const uint8_t* absl_nonnull data, size_t size);
+
+// Copies the active cartridge save RAM into `out_buf` (up to `max_bytes`) and
+// returns the total save RAM size in bytes. Pass `nullptr, 0` to query the size
+// without copying.
+size_t CopySaveData(uint8_t* absl_nullable out_buf, size_t max_bytes);
 
 // --- Explicit MMIO access (0x04000000..0x040003FF) ---
 

@@ -38,6 +38,21 @@ void fe7_mgba_core_destroy(struct mCore* core);
 // Applies `key_input` and advances `core` by one full GBA video frame.
 void fe7_mgba_core_step_frame(struct mCore* core, uint16_t key_input);
 
+// Drains up to `max_frames` interleaved stereo S16 PCM frames from `core` into
+// `out_stereo` (must hold at least `max_frames * 2` int16_t elements). Returns
+// the number of stereo frames written.
+size_t fe7_mgba_read_audio_samples(struct mCore* core, int16_t* out_stereo,
+                                   size_t max_frames);
+
+// Restores `size` bytes of cartridge save RAM into `core`. Returns non-zero on
+// success.
+int fe7_mgba_load_save(struct mCore* core, const uint8_t* data, size_t size);
+
+// Copies cartridge save RAM from `core` into `out_buf` (up to `max_bytes`) and
+// returns the total save RAM size in bytes. Pass NULL/0 to query size only.
+size_t fe7_mgba_copy_save(struct mCore* core, uint8_t* out_buf,
+                          size_t max_bytes);
+
 // Extracts raw backing-memory pointers (EWRAM, IWRAM, ROM, ROM size) and the
 // ARM7TDMI CPU handle from an initialized GBA mCore so g_mem and HAL operations
 // can access them directly.

@@ -2,11 +2,13 @@
 
 #include <assert.h>
 #include <mgba-util/vfs.h>
+#include <mgba/core/blip_buf.h>
 #include <mgba/core/config.h>
 #include <mgba/core/core.h>
 #include <mgba/internal/arm/arm.h>
 #include <mgba/internal/arm/isa-inlines.h>
 #include <mgba/internal/gba/gba.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Snapshot of the volatile ARM7TDMI state needed to nest fallback calls
@@ -40,6 +42,9 @@ struct mCore* fe7_mgba_core_create(const uint8_t* rom_bytes, size_t rom_size,
   // Bind caller-owned framebuffer before reset so the PPU renderer has a valid
   // output target.
   core->setVideoBuffer(core, (color_t*)framebuffer, (size_t)width);
+  // Configure a 2048-frame stereo audio buffer resampled to 48 kHz so callers
+  // can drain PCM samples after each frame.
+  core->setAudioBufferSize(core, 2048);
   // Wrap ROM bytes in a zero-copy read-only VFile; caller must keep rom_bytes
   // alive until destroy.
   struct VFile* vf = VFileFromConstMemory(rom_bytes, rom_size);
@@ -56,6 +61,17 @@ struct mCore* fe7_mgba_core_create(const uint8_t* rom_bytes, size_t rom_size,
   // Reset initializes ARM7TDMI registers, stack pointers, HLE BIOS state, and
   // the active memory map.
   core->reset(core);
+  // Set left/right blip_buf resampling rates after reset so the GBA clock
+  // frequency is initialized.
+  const double gba_freq = (double)core->frequency(core);
+  struct blip_t* left = core->getAudioChannel(core, 0);
+  struct blip_t* right = core->getAudioChannel(core, 1);
+  if (left != NULL) {
+    blip_set_rates(left, gba_freq, 48000.0);
+  }
+  if (right != NULL) {
+    blip_set_rates(right, gba_freq, 48000.0);
+  }
   return core;
 }
 
@@ -71,6 +87,55 @@ void fe7_mgba_core_destroy(struct mCore* core) {
 void fe7_mgba_core_step_frame(struct mCore* core, uint16_t key_input) {
   core->setKeys(core, key_input);
   core->runFrame(core);
+}
+
+size_t fe7_mgba_read_audio_samples(struct mCore* core, int16_t* out_stereo,
+                                   size_t max_frames) {
+  struct blip_t* left = core->getAudioChannel(core, 0);
+  struct blip_t* right = core->getAudioChannel(core, 1);
+  if (left == NULL || right == NULL || max_frames == 0) {
+    return 0;
+  }
+  int avail_l = blip_samples_avail(left);
+  int avail_r = blip_samples_avail(right);
+  int avail = (avail_l < avail_r) ? avail_l : avail_r;
+  if (avail <= 0) {
+    return 0;
+  }
+  if ((size_t)avail > max_frames) {
+    avail = (int)max_frames;
+  }
+  // Pass stereo=1 so left writes even indices and right writes odd indices.
+  int read_l = blip_read_samples(left, out_stereo, avail, 1);
+  int read_r = blip_read_samples(right, out_stereo + 1, avail, 1);
+  return (size_t)((read_l < read_r) ? read_l : read_r);
+}
+
+int fe7_mgba_load_save(struct mCore* core, const uint8_t* data, size_t size) {
+  if (core == NULL || data == NULL || size == 0) {
+    return 0;
+  }
+  // Pass writeback=true so mGBA copies data into its live savedata buffer and
+  // closes the temporary VFile immediately.
+  return core->savedataRestore(core, data, size, true) ? 1 : 0;
+}
+
+size_t fe7_mgba_copy_save(struct mCore* core, uint8_t* out_buf,
+                          size_t max_bytes) {
+  if (core == NULL) {
+    return 0;
+  }
+  void* cloned = NULL;
+  size_t total = core->savedataClone(core, &cloned);
+  if (cloned != NULL) {
+    if (out_buf != NULL && max_bytes > 0) {
+      size_t to_copy = (total < max_bytes) ? total : max_bytes;
+      memcpy(out_buf, cloned, to_copy);
+    }
+    // savedataClone allocates with malloc(); free immediately to avoid leaks.
+    free(cloned);
+  }
+  return total;
 }
 
 void fe7_mgba_get_gba_ptrs(struct mCore* core, uint8_t** ewram, uint8_t** iwram,

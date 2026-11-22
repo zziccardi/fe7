@@ -126,5 +126,17 @@ TEST_F(MgbaHalTest, SwiMmioAndLinkStubsWork) {
   EXPECT_TRUE(hal::link::IsBonusDiskUnlocked());
 }
 
+TEST_F(MgbaHalTest, StepFrameProducesAudioSamplesAndSaveQueryIsSafe) {
+  hal::StepFrame(kKeyA | kKeyStart);
+  std::vector<int16_t> audio(2048 * 2, 0);
+  const size_t frames = hal::ReadAudioSamples(audio.data(), 2048);
+  // One GBA frame (~16.74 ms) at 48 kHz produces ~800 stereo PCM frames.
+  EXPECT_GT(frames, 0u);
+  EXPECT_LE(frames, 2048u);
+
+  // Synthetic ROM has no detected save chip yet; querying save size is safe.
+  EXPECT_EQ(hal::CopySaveData(nullptr, 0), 0u);
+}
+
 }  // namespace
 }  // namespace fe7
