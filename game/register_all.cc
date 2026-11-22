@@ -3,6 +3,7 @@
 #include "game/action/action.h"
 #include "game/ai/ai.h"
 #include "game/ai/ai_decide.h"
+#include "game/ai/ai_script.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
 #include "game/battle/battle_sim.h"
@@ -33,6 +34,7 @@ void RegisterAllNativeFunctions() {
   RegisterSupportFunctions();
   RegisterAiFunctions();
   RegisterAiDecideFunctions();
+  RegisterAiScriptFunctions();
   RegisterActionFunctions();
 }
 
