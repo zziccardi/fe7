@@ -51,6 +51,16 @@ python3 tools/e2e_lockstep.py --rom=/path/to/fe7_us.gba --frames=240 --checkpoin
 bazel run --config=release //runtime:fe7_native -- --rom=/path/to/fe7_us.gba
 ```
 
+## Documentation
+
+See [`docs/README.md`](docs/README.md) for the full documentation index:
+
+- [GBA Hardware Reference](docs/gba_hardware.md) — ARM7TDMI CPU, 32-bit memory map, bus rules, PPU/DMA/BIOS SWIs, and `fe7` runtime bridge.
+- [Thumb-1 Assembly & C++20 Translation](docs/thumb_assembly.md) — Calling convention, instruction reference, annotated FE7 function walkthroughs, and bit-exactness pitfalls.
+- [FE7 US Engine & Business Logic](docs/fe7_business_logic.md) — Canonical RAM/ROM tables, RNG, 6C Proc scheduler, combat formulas, EXP/promotion, BFS pathfinding, phases, supports, and Enemy AI.
+- [Decompilation & Verification Workflow](docs/decompilation_workflow.md) — End-to-end guide for adding and verifying native C++20 functions.
+- [Implementation Plan](docs/implementation_plan.md) — Master Phase 1–5 roadmap.
+
 ## License
 
 All new `fe7` code is licensed under the [MIT License](LICENSE). Third-party `libmgba` patches remain under MPL-2.0 until fallback retirement.
