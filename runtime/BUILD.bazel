@@ -198,6 +198,7 @@ cc_binary(
         "//game/engine:rng",
         "//game/item:item",
         "//game/map:map",
+        "//game/phase:phase",
         "//game/unit:unit",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",

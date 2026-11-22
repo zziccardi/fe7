@@ -1,0 +1,37 @@
+# Turn flow, phase management, faction queries, and gold helpers (Wave 3).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "phase",
+    srcs = ["phase.cc"],
+    hdrs = ["phase.h"],
+    deps = [
+        "//game:proc_hdr",
+        "//game:unit_hdr",
+        "//game/engine:proc",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "phase_test",
+    srcs = ["phase_test.cc"],
+    deps = [
+        ":phase",
+        "//game:proc_hdr",
+        "//game:unit_hdr",
+        "//game/engine:proc",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)

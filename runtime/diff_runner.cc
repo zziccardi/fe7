@@ -24,6 +24,7 @@
 #include "game/engine/rng.h"
 #include "game/item/item.h"
 #include "game/map/map.h"
+#include "game/phase/phase.h"
 #include "game/register_all.h"
 #include "game/unit.h"
 #include "game/unit/unit.h"
@@ -54,6 +55,7 @@ enum class FuzzMode {
   kBattlePair,
   kBattleSim,
   kMapState,
+  kPhaseState,
   kTracesOnly,
 };
 
@@ -300,6 +302,43 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kBattleSim},
     {"BattleHitTerminate", fe7::kAddrBattleHitTerminate, false,
      FuzzMode::kBattleSim},
+    // Wave 3: Turn Flow & Phase Management (0x08015308..0x080868B8)
+    {"LockGame", fe7::kAddrLockGame, false, FuzzMode::kScalarRegs},
+    {"ReleaseGame", fe7::kAddrReleaseGame, false, FuzzMode::kScalarRegs},
+    {"GetGameLock", fe7::kAddrGetGameLock, true, FuzzMode::kScalarRegs},
+    {"SwitchPhases", fe7::kAddrSwitchPhases, false, FuzzMode::kPhaseState},
+    {"BmMainChangePhase", fe7::kAddrBmMainChangePhase, true,
+     FuzzMode::kTracesOnly},
+    {"BmMainCheckVictory", fe7::kAddrBmMainCheckVictory, true,
+     FuzzMode::kTracesOnly},
+    {"BmMainStartPhase", fe7::kAddrBmMainStartPhase, false,
+     FuzzMode::kTracesOnly},
+    {"BmMainResumePlayerPhase", fe7::kAddrBmMainResumePlayerPhase, false,
+     FuzzMode::kTracesOnly},
+    {"BmMainUpdateTraps", fe7::kAddrBmMainUpdateTraps, true,
+     FuzzMode::kTracesOnly},
+    {"RefreshFactionUnits", fe7::kAddrRefreshFactionUnits, false,
+     FuzzMode::kPhaseState},
+    {"ClearAllUnitsBit8", fe7::kAddrClearAllUnitsBit8, false,
+     FuzzMode::kPhaseState},
+    {"PlayerPhaseHandleAutoEnd", fe7::kAddrPlayerPhaseHandleAutoEnd, false,
+     FuzzMode::kPhaseState},
+    {"GetPhaseAbleUnitCount", fe7::kAddrGetPhaseAbleUnitCount, true,
+     FuzzMode::kPhaseState},
+    {"CountUnitsInState", fe7::kAddrCountUnitsInState, true,
+     FuzzMode::kPhaseState},
+    {"AreUnitIdsAllied", fe7::kAddrAreUnitIdsAllied, true,
+     FuzzMode::kScalarRegs},
+    {"IsSameAllegiance", fe7::kAddrIsSameAllegiance, true,
+     FuzzMode::kScalarRegs},
+    {"GetCurrentPhase", fe7::kAddrGetCurrentPhase, true, FuzzMode::kPhaseState},
+    {"GetNonActiveFaction", fe7::kAddrGetNonActiveFaction, true,
+     FuzzMode::kPhaseState},
+    {"GetGold", fe7::kAddrGetGold, true, FuzzMode::kPhaseState},
+    {"SetGold", fe7::kAddrSetGold, false, FuzzMode::kScalarRegs},
+    {"AddGold", fe7::kAddrAddGold, false, FuzzMode::kPhaseState},
+    {"CountUnitsByFaction", fe7::kAddrCountUnitsByFaction, true,
+     FuzzMode::kPhaseState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -907,6 +946,99 @@ std::vector<fe7::TraceRecord> MakeBattleSimTraces(uint32_t gba_addr,
   return out;
 }
 
+// Synthesizes valid gPlayStatus, faction unit arrays (Blue/Green/Red), and a
+// scratch Proc + ProcScr for Wave 3 Turn Flow & Phase Management functions.
+std::vector<fe7::TraceRecord> MakePhaseTraces(uint32_t gba_addr, size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x94A5E001u ^ gba_addr;
+  static constexpr uint8_t kFactions[3] = {fe7::kFactionBlue, fe7::kFactionRed,
+                                           fe7::kFactionGreen};
+
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    // Populate gPlayStatus fields: gold (+0x08), faction (+0x0F), turn (+0x10),
+    // and config2 (+0x41).
+    const uint32_t play_off = fe7::kPhasePlayStatusAddr - 0x02000000u;
+    const int32_t gold = static_cast<int32_t>(NextXorshift(rng) % 1200000u);
+    std::memcpy(rec.ewram.data() + play_off + 0x08u, &gold, sizeof(gold));
+    const uint8_t faction = kFactions[NextXorshift(rng) % 3u];
+    rec.ewram[play_off + 0x0Fu] = faction;
+    const uint16_t turn = static_cast<uint16_t>(
+        (NextXorshift(rng) % 8u == 0u) ? 999u : (1u + NextXorshift(rng) % 20u));
+    std::memcpy(rec.ewram.data() + play_off + 0x10u, &turn, sizeof(turn));
+    rec.ewram[play_off + 0x41u] = (NextXorshift(rng) & 1u) ? 0x40u : 0x00u;
+
+    // Populate a handful of units across Blue, Green, and Red factions with
+    // varied state flags and statuses so faction-iteration routines exercise
+    // every branch safely.
+    for (uint8_t f : kFactions) {
+      for (int slot = 1; slot <= 4; ++slot) {
+        const int uid = static_cast<int>(f) + slot;
+        fe7::GbaPtr<fe7::Unit> ptr = fe7::GetUnit(uid);
+        if (!ptr) {
+          continue;
+        }
+        const uint32_t uoff = ptr.addr - 0x02000000u;
+        if ((NextXorshift(rng) & 3u) == 0u) {
+          std::memset(rec.ewram.data() + uoff, 0, sizeof(fe7::Unit));
+          continue;
+        }
+        PopulateSyntheticUnit(rec.ewram, uoff, rng);
+        fe7::Unit u{};
+        std::memcpy(&u, rec.ewram.data() + uoff, sizeof(u));
+        u.id = static_cast<int8_t>(uid);
+        u.flags = NextXorshift(rng) & 0x000105FFu;
+        u.status = static_cast<uint8_t>(NextXorshift(rng) % 6u);
+        std::memcpy(rec.ewram.data() + uoff, &u, sizeof(u));
+      }
+    }
+
+    // Scratch Proc + minimal ProcScr containing label 3 for
+    // PlayerPhaseHandleAutoEnd.
+    constexpr uint32_t kScrOff = 0x17000u;
+    constexpr uint32_t kProcOff = 0x17100u;
+    fe7::ProcScr script[2] = {
+        {static_cast<int16_t>(fe7::ProcCmd::kLabel), 3,
+         fe7::GbaPtr<const void>(0)},
+        {static_cast<int16_t>(fe7::ProcCmd::kEnd), 0,
+         fe7::GbaPtr<const void>(0)},
+    };
+    std::memcpy(rec.ewram.data() + kScrOff, script, sizeof(script));
+    fe7::Proc proc{};
+    proc.proc_script = fe7::GbaPtr<const fe7::ProcScr>(0x02000000u + kScrOff);
+    proc.proc_script_pc = proc.proc_script;
+    std::memcpy(rec.ewram.data() + kProcOff, &proc, sizeof(proc));
+
+    switch (gba_addr) {
+      case fe7::kAddrPlayerPhaseHandleAutoEnd:
+        rec.regs[0] = 0x02000000u + kProcOff;
+        break;
+      case fe7::kAddrGetPhaseAbleUnitCount:
+      case fe7::kAddrCountUnitsByFaction:
+        rec.regs[0] = kFactions[NextXorshift(rng) % 3u];
+        break;
+      case fe7::kAddrCountUnitsInState:
+        rec.regs[0] = kFactions[NextXorshift(rng) % 3u];
+        rec.regs[1] = NextXorshift(rng) & 0x000100FFu;
+        break;
+      case fe7::kAddrAddGold:
+        rec.regs[0] = static_cast<uint32_t>(
+            static_cast<int32_t>(NextXorshift(rng) % 500000u) - 50000);
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1025,6 +1157,12 @@ int main(int argc, char** argv) {
         auto map_traces = MakeMapTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, map_traces, 0, 0xFE700001u,
                                 opts);
+        break;
+      }
+      case FuzzMode::kPhaseState: {
+        auto phase_traces = MakePhaseTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, phase_traces, 0,
+                                0xFE700001u, opts);
         break;
       }
       case FuzzMode::kTracesOnly:
