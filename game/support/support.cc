@@ -403,10 +403,34 @@ void InitSupportBonuses(GbaPtr<SupportBonuses> bonuses) {
   bonuses->bonus_dodge = 0;
 }
 
-int GetUnitSupportBonuses(GbaPtr<const Unit> unit,
-                          GbaPtr<SupportBonuses> bonuses) {
+namespace {
+
+void ApplyAffinityBonusesLocal(SupportBonuses* bonuses, uint8_t affinity,
+                               int level) {
+  const GbaPtr<const SupportBonuses> entry = GetAffinityBonusEntry(affinity);
+  if (!entry) {
+    return;
+  }
+  bonuses->bonus_attack =
+      static_cast<uint8_t>(bonuses->bonus_attack +
+                           static_cast<uint8_t>(entry->bonus_attack * level));
+  bonuses->bonus_defense =
+      static_cast<uint8_t>(bonuses->bonus_defense +
+                           static_cast<uint8_t>(entry->bonus_defense * level));
+  bonuses->bonus_hit = static_cast<uint8_t>(
+      bonuses->bonus_hit + static_cast<uint8_t>(entry->bonus_hit * level));
+  bonuses->bonus_avoid = static_cast<uint8_t>(
+      bonuses->bonus_avoid + static_cast<uint8_t>(entry->bonus_avoid * level));
+  bonuses->bonus_crit = static_cast<uint8_t>(
+      bonuses->bonus_crit + static_cast<uint8_t>(entry->bonus_crit * level));
+  bonuses->bonus_dodge = static_cast<uint8_t>(
+      bonuses->bonus_dodge + static_cast<uint8_t>(entry->bonus_dodge * level));
+}
+
+int ComputeUnitSupportBonusesImpl(GbaPtr<const Unit> unit,
+                                  SupportBonuses* bonuses) {
   int result = 0;
-  InitSupportBonuses(bonuses);
+  *bonuses = {};
 
   const int count = GetUnitSupporterCount(unit);
   const bool ignore_range =
@@ -433,11 +457,10 @@ int GetUnitSupportBonuses(GbaPtr<const Unit> unit,
     const int partner_idx = GetUnitSupporterNum(partner_c, unit->pinfo->id);
     const int partner_level =
         GetSupportLevelBySupportIndex(partner_c, partner_idx);
-    ApplyAffinitySupportBonuses(bonuses, partner->pinfo->affinity,
-                                partner_level);
+    ApplyAffinityBonusesLocal(bonuses, partner->pinfo->affinity, partner_level);
 
     const int unit_level = GetSupportLevelBySupportIndex(unit, i);
-    ApplyAffinitySupportBonuses(bonuses, unit->pinfo->affinity, unit_level);
+    ApplyAffinityBonusesLocal(bonuses, unit->pinfo->affinity, unit_level);
 
     if (partner_level != 0 && unit_level != 0) {
       result += (1 << (count - 1));
@@ -450,6 +473,22 @@ int GetUnitSupportBonuses(GbaPtr<const Unit> unit,
   bonuses->bonus_avoid >>= 1;
   bonuses->bonus_crit >>= 1;
   bonuses->bonus_dodge >>= 1;
+  return result;
+}
+
+}  // namespace
+
+SupportBonuses ComputeUnitSupportBonuses(GbaPtr<const Unit> unit) {
+  SupportBonuses bonuses{};
+  ComputeUnitSupportBonusesImpl(unit, &bonuses);
+  return bonuses;
+}
+
+int GetUnitSupportBonuses(GbaPtr<const Unit> unit,
+                          GbaPtr<SupportBonuses> bonuses) {
+  SupportBonuses local{};
+  const int result = ComputeUnitSupportBonusesImpl(unit, &local);
+  *bonuses = local;
   return result;
 }
 

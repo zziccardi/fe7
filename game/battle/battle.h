@@ -86,7 +86,16 @@ void BattleApplyReaverEffect(GbaPtr<BattleUnit> attacker,
 void BattleApplyWeaponTriangleEffect(GbaPtr<BattleUnit> attacker,
                                      GbaPtr<BattleUnit> defender);
 
-// Registers all 18 native battle formula functions in the dispatch table.
+// Returns true if `unit` holds item IID 0x8A (Afa's Drops / Tactician bonus
+// item). Matches FE7 US `func_08028194`.
+bool HasTacticianAfaBonus(GbaPtr<const Unit> unit);
+
+// Adds active nearby support affinity bonuses to `attacker`'s battle stats.
+// Matches FE7 US `func_08028A24`.
+void ComputeBattleUnitSupportBonuses(GbaPtr<BattleUnit> attacker,
+                                     GbaPtr<BattleUnit> defender);
+
+// Registers all 20 native battle formula functions in the dispatch table.
 void RegisterBattleFunctions();
 
 }  // namespace fe7

@@ -11,6 +11,7 @@
 #include "game/map/map.h"
 #include "game/phase/phase.h"
 #include "game/unit.h"
+#include "game/unit/unit.h"
 #include "runtime/dispatch.h"
 #include "runtime/gba_ptr.h"
 
@@ -576,6 +577,87 @@ int AiGetFriendZonePositionScoreComponent(int x, int y) {
   return score;
 }
 
+void AiMakeMoveRangeMapsForUnitAndWeapon(GbaPtr<const Unit> unit,
+                                         uint16_t weapon) {
+  MapFloodUnit(unit);
+  GbaPtr<GbaPtr<uint8_t>> rng_map =
+      *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapRangeAddr);
+  MapFill(rng_map, 0);
+
+  GbaPtr<const MapSize> sz(kMapSizeAddr);
+  GbaPtr<GbaPtr<uint8_t>> mov_map =
+      *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapMovementAddr);
+  for (int y = sz->y - 1; y >= 0; --y) {
+    for (int x = sz->x - 1; x >= 0; --x) {
+      if (mov_map[y][x] > 0x78u) {
+        continue;
+      }
+      const int min_r = static_cast<int16_t>(GetItemMinRange(weapon));
+      const int max_r = static_cast<int16_t>(GetItemMaxRange(weapon));
+      MapSetInRange(x, y, min_r, max_r);
+    }
+  }
+}
+
+void AiFillDangerMap() {
+  // Mirror FE7 US quirk: `best_item` (r8) and `best_might` (sb) are initialized
+  // once before the 1..0xBF unit loop rather than reset per unit.
+  uint16_t best_item = 0;
+  uint8_t best_might = 0;
+  const uint8_t active_id = *GbaPtr<const uint8_t>(kAiActiveUnitIdAddr);
+  GbaPtr<const Unit> active =
+      *GbaPtr<const GbaPtr<const Unit>>(kAiActiveUnitAddr);
+  GbaPtr<const MapSize> sz(kMapSizeAddr);
+  GbaPtr<GbaPtr<uint8_t>> rng_map =
+      *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapRangeAddr);
+  GbaPtr<GbaPtr<uint8_t>> other_map = MapOtherPtr();
+
+  for (int id = 1; id <= 0xBF; ++id) {
+    GbaPtr<Unit> unit = GetUnit(id);
+    if (!unit || !unit->pinfo) {
+      continue;
+    }
+    if ((unit->flags & 0x0001000Du) != 0u) {
+      continue;
+    }
+    if (AreUnitIdsAllied(active_id, static_cast<uint8_t>(unit->id))) {
+      continue;
+    }
+
+    GbaPtr<const Unit> unit_c(unit.addr);
+    for (int slot = 0; slot < kUnitItemCount && unit->items[slot] != 0u;
+         ++slot) {
+      const uint16_t item = unit->items[slot];
+      if (!CanUnitUseWeapon(unit_c, item)) {
+        continue;
+      }
+      if (GetItemMight(item) > static_cast<int>(best_might)) {
+        best_item = item;
+        best_might = static_cast<uint8_t>(GetItemMight(item));
+      }
+    }
+
+    if (best_item == 0u) {
+      continue;
+    }
+    if (!AiCouldReachByBirdsEyeDistance(active, unit_c, best_item)) {
+      continue;
+    }
+
+    AiMakeMoveRangeMapsForUnitAndWeapon(unit_c, best_item);
+    for (int y = sz->y - 1; y >= 0; --y) {
+      for (int x = sz->x - 1; x >= 0; --x) {
+        if (static_cast<int8_t>(rng_map[y][x]) == 0) {
+          continue;
+        }
+        const int danger_add =
+            (GetUnitPower(unit_c) + static_cast<int>(best_might)) >> 1;
+        other_map[y][x] = static_cast<uint8_t>(other_map[y][x] + danger_add);
+      }
+    }
+  }
+}
+
 void AiRefreshDangerMap() {
   GbaPtr<uint8_t> danger_filled(kAiStateAddr + 0x7Au);
   if (*danger_filled != 0u) {
@@ -583,10 +665,23 @@ void AiRefreshDangerMap() {
   }
   *danger_filled = 1u;
   MapFill(MapOtherPtr(), 0);
-  GbaCall(kAddrAiFillDangerMap);
+  AiFillDangerMap();
 }
 
 void RegisterAiFunctions() {
+  RegisterNative(kAddrAiMakeMoveRangeMapsForUnitAndWeapon,
+                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   AiMakeMoveRangeMapsForUnitAndWeapon(
+                       GbaPtr<const Unit>(r0), static_cast<uint16_t>(r1));
+                   return 0u;
+                 });
+  RegisterNative(kAddrAiFillDangerMap,
+                 [](uint32_t, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   AiFillDangerMap();
+                   return 0u;
+                 });
   RegisterNative(kAddrAiClearDecision, ThunkAiClearDecision);
   RegisterNative(kAddrAiSetDecision, ThunkAiSetDecision);
   RegisterNative(kAddrAiUpdateDecision, ThunkAiUpdateDecision);

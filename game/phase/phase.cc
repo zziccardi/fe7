@@ -211,9 +211,7 @@ int BmMainChangePhase() {
   RefreshFactionUnits();
   GbaCall(kAddrRefreshUnitSprites);
   SwitchPhases();
-  const int8_t has_event =
-      static_cast<int8_t>(GbaCall(kAddrCheckTurnEvents) & 0xFFu);
-  if (has_event == 1) {
+  if (CheckTurnEvents() == 1) {
     GbaCall(kAddrRunTurnEvents);
     return 0;
   }
@@ -221,9 +219,7 @@ int BmMainChangePhase() {
 }
 
 int BmMainCheckVictory() {
-  const int8_t has_event =
-      static_cast<int8_t>(GbaCall(kAddrCheckVictoryEvents) & 0xFFu);
-  if (has_event == 1) {
+  if (CheckVictoryEvents() == 1) {
     GbaCall(kAddrRunVictoryEvents);
     return 0;
   }
@@ -275,7 +271,7 @@ void RefreshFactionUnits() {
       if ((unit->flags & kRefreshSkipDeployMask) != 0u) {
         continue;
       }
-      GbaCall(kAddrRecordUnitTurnDeployment, unit->pinfo->id);
+      RecordUnitTurnDeployment(unit->pinfo->id);
     }
   }
 
@@ -394,7 +390,143 @@ int CountUnitsByFaction(int faction) {
   return count;
 }
 
+GbaPtr<const uint8_t> GetChapterInfo(int chapter_id) {
+  const uint32_t addr =
+      kChapterInfoTableAddr + static_cast<uint32_t>(chapter_id) * 0x98u;
+  return GbaPtr<const uint8_t>(addr);
+}
+
+GbaPtr<const uint32_t> GetChapterEventInfo(int chapter_id) {
+  const uint8_t asset_idx = GetChapterInfo(chapter_id)[0x78];
+  const uint32_t ptr_addr =
+      kChapterEventAssetTableAddr + static_cast<uint32_t>(asset_idx) * 4u;
+  return *GbaPtr<const GbaPtr<const uint32_t>>(ptr_addr);
+}
+
+int CheckChapterFlag(int flag) {
+  if (flag == 0) {
+    return 0;
+  }
+  const int idx = flag - 1;
+  const int byte_idx = idx / 8;
+  const int bit_idx = idx - byte_idx * 8;
+  const uint8_t byte_val = *GbaPtr<const uint8_t>(
+      kChapterFlagsAddr + static_cast<uint32_t>(byte_idx));
+  const uint8_t mask = *GbaPtr<const uint8_t>(kFlagBitMaskTableAddr +
+                                              static_cast<uint32_t>(bit_idx));
+  return (byte_val & mask) != 0u ? 1 : 0;
+}
+
+int CheckPermanentFlag(int flag) {
+  if (flag <= 0x64) {
+    return 0;
+  }
+  const int idx = flag - 0x65;
+  const int byte_idx = idx / 8;
+  const int bit_idx = idx - byte_idx * 8;
+  const uint8_t byte_val = *GbaPtr<const uint8_t>(
+      kPermanentFlagsAddr + static_cast<uint32_t>(byte_idx));
+  const uint8_t mask = *GbaPtr<const uint8_t>(kFlagBitMaskTableAddr +
+                                              static_cast<uint32_t>(bit_idx));
+  return (byte_val & mask) != 0u ? 1 : 0;
+}
+
+int GetFlag(int flag) {
+  return flag <= 0x63 ? CheckChapterFlag(flag) : CheckPermanentFlag(flag);
+}
+
+int EventListEndHandler(GbaPtr<EventListInfo> /*info*/) { return 1; }
+
+GbaPtr<EventListInfo> SearchEventList(GbaPtr<EventListInfo> info) {
+  info->script_addr = 0;
+  info->flag = 0;
+  for (;;) {
+    const GbaPtr<const uint16_t> entry(info->list_ptr);
+    const uint16_t kind = entry[0];
+    const uint16_t flag = entry[1];
+    if (GetFlag(static_cast<int>(flag)) == 0) {
+      const uint32_t handler_addr = *GbaPtr<const uint32_t>(
+          kEventListHandlerTableAddr + static_cast<uint32_t>(kind) * 8u);
+      if (GbaCall(handler_addr, info.addr) == 1u) {
+        break;
+      }
+    }
+    const uint32_t word_size = *GbaPtr<const uint32_t>(
+        kEventListHandlerTableAddr + static_cast<uint32_t>(kind) * 8u + 4u);
+    info->list_ptr += word_size * 4u;
+  }
+  return info->script_addr != 0u ? info : GbaPtr<EventListInfo>(0);
+}
+
+int CheckTurnEvents() {
+  GbaPtr<EventListInfo> info(kEventInfoScratchAddr);
+  const int8_t ch = *GbaPtr<const int8_t>(kPhasePlayStatusAddr + 0x0Eu);
+  info->list_ptr = GetChapterEventInfo(static_cast<int>(ch))[0];
+  return SearchEventList(info) ? 1 : 0;
+}
+
+int CheckVictoryEvents() {
+  GbaPtr<EventListInfo> info(kEventInfoScratchAddr);
+  const int8_t raw_ch = *GbaPtr<const int8_t>(kPhasePlayStatusAddr + 0x0Eu);
+  const uint16_t ch = static_cast<uint16_t>(static_cast<int16_t>(raw_ch));
+  if (ch > 0x0Bu) {
+    return 0;
+  }
+  info->list_ptr = *GbaPtr<const uint32_t>(
+      kVictoryEventTableAddr + static_cast<uint32_t>(ch) * 16u + 0x0Cu);
+  return SearchEventList(info) ? 1 : 0;
+}
+
 void RegisterPhaseFunctions() {
+  RegisterNative(kAddrGetChapterInfo,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return GetChapterInfo(static_cast<int32_t>(r0)).addr;
+                 });
+  RegisterNative(kAddrGetChapterEventInfo,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return GetChapterEventInfo(static_cast<int32_t>(r0)).addr;
+                 });
+  RegisterNative(kAddrSearchEventList,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return SearchEventList(GbaPtr<EventListInfo>(r0)).addr;
+                 });
+  RegisterNative(kAddrEventListEndHandler,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return static_cast<uint32_t>(
+                       EventListEndHandler(GbaPtr<EventListInfo>(r0)));
+                 });
+  RegisterNative(kAddrCheckTurnEvents,
+                 [](uint32_t, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return static_cast<uint32_t>(CheckTurnEvents());
+                 });
+  RegisterNative(kAddrCheckVictoryEvents,
+                 [](uint32_t, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return static_cast<uint32_t>(CheckVictoryEvents());
+                 });
+  RegisterNative(kAddrCheckChapterFlag,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return static_cast<uint32_t>(
+                       CheckChapterFlag(static_cast<int32_t>(r0)));
+                 });
+  RegisterNative(kAddrCheckPermanentFlag,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return static_cast<uint32_t>(
+                       CheckPermanentFlag(static_cast<int32_t>(r0)));
+                 });
+  RegisterNative(
+      kAddrGetFlag,
+      [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+         const uint32_t* absl_nullable) -> uint32_t {
+        return static_cast<uint32_t>(GetFlag(static_cast<int32_t>(r0)));
+      });
   RegisterNative(kAddrLockGame, ThunkLockGame);
   RegisterNative(kAddrReleaseGame, ThunkReleaseGame);
   RegisterNative(kAddrGetGameLock, ThunkGetGameLock);

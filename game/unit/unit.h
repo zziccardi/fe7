@@ -166,7 +166,31 @@ GbaPtr<const JInfo> GetJobInfo(int jid);
 // Matches FE7 US `func_08018D38`.
 GbaPtr<const PInfo> GetPersonInfo(int pid);
 
-// Registers all 25 native unit functions in the global dispatch table.
+// EWRAM PID stats array (`0x0203E790`, 16 bytes per entry) and ROM addresses.
+inline constexpr uint32_t kPidStatsTableAddr = 0x0203E790u;
+inline constexpr uint32_t kAddrUnitCheckStatOverflow = 0x08017C64u;
+inline constexpr uint32_t kAddrPidStatsAddExpGained = 0x080A009Cu;
+inline constexpr uint32_t kAddrRecordUnitTurnDeployment = 0x080A00FCu;
+inline constexpr uint32_t kAddrPidStatsAddScore = 0x080A0248u;
+
+// Clamps `unit`'s stats (HP, Pow, Skl, Spd, Def, Res, Lck, Con, Mov) against
+// faction/class caps. Matches FE7 US `UnitCheckStatOverflow` (0x08017C64).
+void UnitCheckStatOverflow(GbaPtr<Unit> unit);
+
+// Adds `delta` to character `pid`'s 16-bit PID stats score (clamped to
+// `[0, 0x4000]`). Matches FE7 US `func_080A0248`.
+void PidStatsAddScore(uint8_t pid, int delta);
+
+// Records `exp_gain` in character `pid`'s 12-bit EXP counter (capped at 4000)
+// and adds `exp_gain` to the PID score. Matches `PidStatsAddExpGained`
+// (0x080A009C).
+void PidStatsAddExpGained(uint8_t pid, int exp_gain);
+
+// Applies the per-turn deployment score penalty (-8) to character `pid`.
+// Matches FE7 US `func_080A00FC`.
+void RecordUnitTurnDeployment(uint8_t pid);
+
+// Registers all 29 native unit functions in the global dispatch table.
 void RegisterUnitFunctions();
 
 }  // namespace fe7

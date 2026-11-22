@@ -19,6 +19,7 @@ fe7_game_cc_library(
         "//game/item:item",
         "//game/map:map",
         "//game/phase:phase",
+        "//game/unit:unit",
         "//runtime:dispatch",
         "//runtime:gba_ptr",
         "@abseil-cpp//absl/base:nullability",

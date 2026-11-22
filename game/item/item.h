@@ -132,7 +132,14 @@ int GetItemMaxValue(int item);
 int GetItemWeaponExp(int item);
 GbaPtr<const IInfo> GetIInfo(int iid);
 
-// Registers all 42 native item functions in the global dispatch table.
+// ROM address for UnitRemoveInvalidItems (inventory compaction).
+inline constexpr uint32_t kAddrUnitRemoveInvalidItems = 0x08017688u;
+
+// Compacts `unit->items[0..4]` in place, removing zero entries and zero-padding
+// trailing slots. Matches FE7 US `UnitRemoveInvalidItems` (0x08017688).
+void UnitRemoveInvalidItems(GbaPtr<Unit> unit);
+
+// Registers all 43 native item functions in the global dispatch table.
 void RegisterItemFunctions();
 
 }  // namespace fe7

@@ -492,6 +492,38 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      fe7::kAddrAiGetFriendZonePositionScoreComponent, true, FuzzMode::kAiState},
     {"AiRefreshDangerMap", fe7::kAddrAiRefreshDangerMap, false,
      FuzzMode::kAiState},
+    // E2E leaf-stub decompilation batch (19 functions).
+    {"GetUnitMovementCost", fe7::kAddrGetUnitMovementCost, true,
+     FuzzMode::kUnitPtrInR0},
+    {"UnitRemoveInvalidItems", fe7::kAddrUnitRemoveInvalidItems, false,
+     FuzzMode::kUnitPtrInR0},
+    {"UnitCheckStatOverflow", fe7::kAddrUnitCheckStatOverflow, false,
+     FuzzMode::kUnitPtrInR0},
+    {"HasTacticianAfaBonus", fe7::kAddrHasTacticianAfaBonus, true,
+     FuzzMode::kUnitPtrInR0},
+    {"ComputeBattleUnitSupportBonuses",
+     fe7::kAddrComputeBattleUnitSupportBonuses, false, FuzzMode::kBattlePair},
+    {"PidStatsAddScore", fe7::kAddrPidStatsAddScore, false, FuzzMode::kAiState},
+    {"PidStatsAddExpGained", fe7::kAddrPidStatsAddExpGained, false,
+     FuzzMode::kAiState},
+    {"RecordUnitTurnDeployment", fe7::kAddrRecordUnitTurnDeployment, false,
+     FuzzMode::kAiState},
+    {"AiMakeMoveRangeMapsForUnitAndWeapon",
+     fe7::kAddrAiMakeMoveRangeMapsForUnitAndWeapon, false, FuzzMode::kAiState},
+    {"AiFillDangerMap", fe7::kAddrAiFillDangerMap, false, FuzzMode::kAiState},
+    {"GetChapterInfo", fe7::kAddrGetChapterInfo, true, FuzzMode::kAiState},
+    {"GetChapterEventInfo", fe7::kAddrGetChapterEventInfo, true,
+     FuzzMode::kAiState},
+    {"CheckChapterFlag", fe7::kAddrCheckChapterFlag, true, FuzzMode::kAiState},
+    {"CheckPermanentFlag", fe7::kAddrCheckPermanentFlag, true,
+     FuzzMode::kAiState},
+    {"GetFlag", fe7::kAddrGetFlag, true, FuzzMode::kAiState},
+    {"EventListEndHandler", fe7::kAddrEventListEndHandler, true,
+     FuzzMode::kScalarRegs},
+    {"SearchEventList", fe7::kAddrSearchEventList, true, FuzzMode::kAiState},
+    {"CheckTurnEvents", fe7::kAddrCheckTurnEvents, true, FuzzMode::kAiState},
+    {"CheckVictoryEvents", fe7::kAddrCheckVictoryEvents, true,
+     FuzzMode::kAiState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -1673,6 +1705,48 @@ std::vector<fe7::TraceRecord> MakeAiTraces(uint32_t gba_addr, size_t count) {
       case fe7::kAddrAiGetFriendZonePositionScoreComponent:
         rec.regs[0] = static_cast<uint32_t>(ax);
         rec.regs[1] = static_cast<uint32_t>(ay);
+        break;
+      case fe7::kAddrPidStatsAddScore:
+      case fe7::kAddrPidStatsAddExpGained:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 0x45u);
+        rec.regs[1] = static_cast<uint32_t>(
+            static_cast<int32_t>(NextXorshift(rng) % 100u) - 20);
+        break;
+      case fe7::kAddrRecordUnitTurnDeployment:
+        rec.regs[0] = 1u + (NextXorshift(rng) % 0x45u);
+        break;
+      case fe7::kAddrAiMakeMoveRangeMapsForUnitAndWeapon:
+        rec.regs[0] = ua_addr;
+        rec.regs[1] = 0x1401u;  // Iron Sword (valid range 1-1)
+        break;
+      case fe7::kAddrGetChapterInfo:
+      case fe7::kAddrGetChapterEventInfo:
+        rec.regs[0] = NextXorshift(rng) % 0x20u;
+        break;
+      case fe7::kAddrCheckChapterFlag:
+        rec.regs[0] = NextXorshift(rng) % 0x64u;
+        break;
+      case fe7::kAddrCheckPermanentFlag:
+        rec.regs[0] = 0x64u + (NextXorshift(rng) % 0x40u);
+        break;
+      case fe7::kAddrGetFlag:
+        rec.regs[0] = NextXorshift(rng) % 0xA0u;
+        break;
+      case fe7::kAddrSearchEventList: {
+        // Point EventListInfo::list_ptr to an empty 0-terminated ROM/EWRAM
+        // list.
+        constexpr uint32_t kEventInfoOff = 0x18240u;
+        constexpr uint32_t kEmptyListOff = 0x18280u;
+        const uint32_t list_addr = 0x02000000u + kEmptyListOff;
+        std::memcpy(rec.ewram.data() + kEventInfoOff, &list_addr,
+                    sizeof(list_addr));
+        rec.regs[0] = 0x02000000u + kEventInfoOff;
+        break;
+      }
+      case fe7::kAddrCheckTurnEvents:
+      case fe7::kAddrCheckVictoryEvents:
+        rec.ewram[(fe7::kPhasePlayStatusAddr - 0x02000000u) + 0x0Eu] =
+            static_cast<uint8_t>(NextXorshift(rng) % 10u);
         break;
       default:
         break;

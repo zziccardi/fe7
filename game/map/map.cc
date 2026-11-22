@@ -326,24 +326,35 @@ void BeginMapFlood(int x, int y, int movement, int unit_id) {
   MapFloodCoreRam();
 }
 
+GbaPtr<const int8_t> GetUnitMovementCost(GbaPtr<const Unit> unit) {
+  if ((unit->flags & kUnitFlagInBallista) != 0u) {
+    return GbaPtr<const int8_t>(kBallistaMoveTableAddr);
+  }
+  const uint8_t weather = *GbaPtr<const uint8_t>(kMapPlayStatusAddr + 0x15u);
+  if (weather == 1u || weather == 2u) {
+    return unit->jinfo->mov_table[2];
+  }
+  if (weather == 4u) {
+    return unit->jinfo->mov_table[1];
+  }
+  return unit->jinfo->mov_table[0];
+}
+
 void MapFloodUnit(GbaPtr<const Unit> unit) {
-  const uint32_t mov_ptr = GbaCall(kAddrGetUnitMovementCost, unit.addr);
-  SetWorkingMoveTable(GbaPtr<const int8_t>(mov_ptr));
+  SetWorkingMoveTable(GetUnitMovementCost(unit));
   SetWorkingMap(*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapMovementAddr));
   BeginMapFlood(unit->x, unit->y, unit->jinfo->base_mov + unit->bonus_mov,
                 unit->id);
 }
 
 void MapFloodUnitMovement(GbaPtr<const Unit> unit, int movement) {
-  const uint32_t mov_ptr = GbaCall(kAddrGetUnitMovementCost, unit.addr);
-  SetWorkingMoveTable(GbaPtr<const int8_t>(mov_ptr));
+  SetWorkingMoveTable(GetUnitMovementCost(unit));
   SetWorkingMap(*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapMovementAddr));
   BeginMapFlood(unit->x, unit->y, movement, unit->id);
 }
 
 void MapFloodUnitExtended(GbaPtr<const Unit> unit) {
-  const uint32_t mov_ptr = GbaCall(kAddrGetUnitMovementCost, unit.addr);
-  SetWorkingMoveTable(GbaPtr<const int8_t>(mov_ptr));
+  SetWorkingMoveTable(GetUnitMovementCost(unit));
   SetWorkingMap(*GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapMovementAddr));
   BeginMapFlood(unit->x, unit->y, 0x7C, 0);
 }
@@ -361,8 +372,7 @@ void MapFloodExtended(int x, int y, GbaPtr<const int8_t> mov_table) {
 }
 
 void MapFloodOnWorkingMap(GbaPtr<const Unit> unit, int x, int y, int movement) {
-  const uint32_t mov_ptr = GbaCall(kAddrGetUnitMovementCost, unit.addr);
-  SetWorkingMoveTable(GbaPtr<const int8_t>(mov_ptr));
+  SetWorkingMoveTable(GetUnitMovementCost(unit));
   BeginMapFlood(x, y, movement, unit->id);
 }
 
@@ -416,6 +426,11 @@ void MapSetInRange(int x, int y, int min_range, int max_range) {
 }
 
 void RegisterMapFunctions() {
+  RegisterNative(kAddrGetUnitMovementCost,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return GetUnitMovementCost(GbaPtr<const Unit>(r0)).addr;
+                 });
   RegisterNative(kAddrMapFloodCoreRam, &ThunkMapFloodCoreRam);
   RegisterNative(kAddrMapInit, &ThunkMapInit);
   RegisterNative(kAddrMapFill, &ThunkMapFill);

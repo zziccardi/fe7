@@ -25,11 +25,8 @@ inline constexpr uint32_t kBattleExpScratchAddr = 0x0203A510u;
 inline constexpr uint32_t kBattleUnitPaletteScratchAddr = 0x03002850u;
 
 // External helper ROM addresses invoked via GbaCall().
-inline constexpr uint32_t kAddrUnitRemoveInvalidItems = 0x08017688u;
-inline constexpr uint32_t kAddrUnitCheckStatOverflow = 0x08017C64u;
 inline constexpr uint32_t kAddrUpdateObstacleFromBattle = 0x0802A314u;
 inline constexpr uint32_t kAddrGetTrap = 0x0802C318u;
-inline constexpr uint32_t kAddrPidStatsAddExpGained = 0x080A009Cu;
 
 // FE7 US ROM addresses for the 26 decompiled post-battle EXP/update functions.
 inline constexpr uint32_t kAddrBattleApplyExpGains = 0x0802956Cu;

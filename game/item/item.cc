@@ -664,7 +664,27 @@ GbaPtr<const IInfo> GetIInfo(int iid) {
   return GbaPtr<const IInfo>(addr);
 }
 
+void UnitRemoveInvalidItems(GbaPtr<Unit> unit) {
+  uint16_t compacted[kUnitItemCount + 1]{};
+  int dst = 0;
+  for (int i = 0; i < kUnitItemCount; ++i) {
+    if (unit->items[i] != 0u) {
+      compacted[dst++] = unit->items[i];
+    }
+    unit->items[i] = 0u;
+  }
+  for (int i = 0; i < kUnitItemCount && compacted[i] != 0u; ++i) {
+    unit->items[i] = compacted[i];
+  }
+}
+
 void RegisterItemFunctions() {
+  RegisterNative(kAddrUnitRemoveInvalidItems,
+                 [](uint32_t r0, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   UnitRemoveInvalidItems(GbaPtr<Unit>(r0));
+                   return 0u;
+                 });
   RegisterNative(kAddrItemHpBonus, &ThunkGetItemHpBonus);
   RegisterNative(kAddrItemPowBonus, &ThunkGetItemPowBonus);
   RegisterNative(kAddrItemSklBonus, &ThunkGetItemSklBonus);
