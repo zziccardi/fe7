@@ -2,6 +2,7 @@
 
 #include "game/action/action.h"
 #include "game/ai/ai.h"
+#include "game/ai/ai_actions.h"
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
@@ -37,6 +38,7 @@ void RegisterAllNativeFunctions() {
   RegisterAiDecideFunctions();
   RegisterAiScriptFunctions();
   RegisterAiOpcodeFunctions();
+  RegisterAiActionFunctions();
   RegisterActionFunctions();
 }
 

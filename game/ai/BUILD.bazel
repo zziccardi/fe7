@@ -157,3 +157,41 @@ fe7_cc_test(
         "@abseil-cpp//absl/base:nullability",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ai_actions",
+    srcs = ["ai_actions.cc"],
+    hdrs = ["ai_actions.h"],
+    deps = [
+        ":ai",
+        ":ai_decide",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_actions_test",
+    srcs = ["ai_actions_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_opcodes",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
