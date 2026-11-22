@@ -51,7 +51,7 @@ python3 tools/check_agent_rules.py
 - **Header files (`.h`)**: Always include a module-level comment block at the top explaining the module's purpose, invariants, and architectural role.
 - **Public interfaces**: Document public constants, structs/classes, typedefs, and functions (parameters, return values, ownership/lifetime requirements).
 - **Non-trivial implementations**: Include inline comments explaining *why* each non-trivial statement is performed (e.g., hardware bus rules, ARM7TDMI pipeline offsets, memory ownership order, ABI constraints), not merely restating what the code does.
-- **C++20 style**: Google C++ Style Guide (`.clang-format`, 100-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `game/`.
+- **C++20 style**: Google C++ Style Guide (`.clang-format`, 80-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `game/`.
 - **Commits**: Use Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
 
 ## 4. Runtime, Bazel & libmgba Gotchas

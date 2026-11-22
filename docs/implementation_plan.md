@@ -103,7 +103,7 @@ Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with pe
   - `--config=headless`: strips SDL3 window/audio deps for 1,000+ FPS TAS/differential testing
 
 #### [NEW] `.clang-format`, `.clang-tidy`, & `tools/agent_rules.md`
-- `.clang-format`: `BasedOnStyle: Google`, `ColumnLimit: 100`.
+- `.clang-format`: `BasedOnStyle: Google`, `ColumnLimit: 80`.
 - **Strict Google "C-with-types" C++20 rules enforced by `clang-tidy` + `tools/check_agent_rules.py`:**
   - **Allowed in `game/`:** Free functions, POD structs with `static_assert(sizeof/offsetof)`, `GbaPtr<T>`, `GbaSpan<T>`, `ProcAs<T>()`, scoped enums, `constexpr` constants (`kCamelCase`), globals (`gCamelCase`), `kViewportWidth` / `kViewportHeight`, and zero-cost Abseil header annotations (`absl_nonnull`, `absl_nullable`).
   - **Forbidden in `game/`:** Exceptions, RTTI, inheritance/`virtual` methods, heap-allocating STL or Abseil containers (`std::vector`, `std::string`, `std::map`, `absl::flat_hash_map`, etc.) during Phases 1–4, inline `asm`, raw `reinterpret_cast` from `uint32_t`, hardcoded `240`/`160` screen dimensions in camera/UI layout logic.

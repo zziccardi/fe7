@@ -1,13 +1,10 @@
-#include "runtime/gba_hal.h"
-
-#include <array>
+#include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "runtime/dispatch.h"
+#include "runtime/gba_hal.h"
 #include "runtime/gba_ptr.h"
 #include "runtime/rom_loader.h"
 
@@ -44,12 +41,15 @@ std::vector<uint8_t> BuildSyntheticThumbRom() {
   // 0x08000110: ThumbCallNativeHelper(r0) -> NativeHelper(r0) + 1
   EmitThumb16(rom, 0x110, 0xB500);  // push {lr}
   EmitThumb16(rom, 0x112, 0xF000);  // bl 0x08000140 (part 1)
-  EmitThumb16(rom, 0x114, 0xF814);  // bl 0x08000140 (part 2: (0x140 - 0x116) / 2 = 0x15? 0x116+0x28=0x13E; wait: 0x140-0x116=0x2A -> 0x15)
+  EmitThumb16(rom, 0x114,
+              0xF814);  // bl 0x08000140 (part 2: (0x140 - 0x116) / 2 = 0x15?
+                        // 0x116+0x28=0x13E; wait: 0x140-0x116=0x2A -> 0x15)
   EmitThumb16(rom, 0x114, 0xF815);  // bl 0x08000140 (part 2)
   EmitThumb16(rom, 0x116, 0x3001);  // add r0, #1
   EmitThumb16(rom, 0x118, 0xBD00);  // pop {pc}
 
-  // 0x08000120: ThumbMutateEwramStruct(GbaPtr<MockUnit> r0) -> r0->hp += 5; return r0->hp;
+  // 0x08000120: ThumbMutateEwramStruct(GbaPtr<MockUnit> r0) -> r0->hp += 5;
+  // return r0->hp;
   EmitThumb16(rom, 0x120, 0x6801);  // ldr r1, [r0, #0]
   EmitThumb16(rom, 0x122, 0x3105);  // add r1, #5
   EmitThumb16(rom, 0x124, 0x6001);  // str r1, [r0, #0]
@@ -59,11 +59,13 @@ std::vector<uint8_t> BuildSyntheticThumbRom() {
   return rom;
 }
 
-uint32_t NativeDouble(uint32_t r0, uint32_t, uint32_t, uint32_t, const uint32_t*) {
+uint32_t NativeDouble(uint32_t r0, uint32_t, uint32_t, uint32_t,
+                      const uint32_t*) {
   return r0 * 2u;
 }
 
-uint32_t NativeAdd(uint32_t r0, uint32_t r1, uint32_t, uint32_t, const uint32_t*) {
+uint32_t NativeAdd(uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                   const uint32_t*) {
   return r0 + r1;
 }
 
