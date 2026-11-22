@@ -1,0 +1,34 @@
+# Item properties, weapon stat bonuses, and equip/usage checks (Wave 2).
+
+load("//bazel:fe7_rules.bzl", "fe7_cc_test", "fe7_game_cc_library")
+
+package(default_visibility = [
+    "//game:__subpackages__",
+    "//runtime:__subpackages__",
+])
+
+fe7_game_cc_library(
+    name = "item",
+    srcs = ["item.cc"],
+    hdrs = ["item.h"],
+    deps = [
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "item_test",
+    srcs = ["item_test.cc"],
+    deps = [
+        ":item",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)

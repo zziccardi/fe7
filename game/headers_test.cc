@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 
+#include "game/item.h"
 #include "game/proc.h"
 #include "game/unit.h"
 #include "gtest/gtest.h"
