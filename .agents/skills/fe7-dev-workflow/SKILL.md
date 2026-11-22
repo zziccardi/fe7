@@ -38,6 +38,9 @@ BAZEL_JVM_FLAGS=(
 # Also verify default and release (-O2 -DNDEBUG) builds when changing build files or asserts
 "$BAZEL" "${BAZEL_JVM_FLAGS[@]}" test //...
 "$BAZEL" "${BAZEL_JVM_FLAGS[@]}" test --config=release //...
+
+# Enforce game/ C-with-types guardrails
+python3 tools/check_agent_rules.py
 ```
 
 ## 3. Coding, Documentation & Commit Conventions
@@ -51,8 +54,10 @@ BAZEL_JVM_FLAGS=(
 - **C++20 style**: Google C++ Style Guide (`.clang-format`, 100-column limit), `-fno-exceptions`, `-fno-rtti`, `-Werror`. Follow `tools/agent_rules.md` for `game/`.
 - **Commits**: Use Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
 
-## 4. Runtime / libmgba Gotchas
+## 4. Runtime, Bazel & libmgba Gotchas
 
 - `VFileFromConstMemory` in libmgba borrows the ROM byte pointer without copying; HAL (`runtime/mgba_hal.cc`) must keep an owned copy (`gRomBytes`) alive until after `fe7_mgba_core_destroy`.
 - `mCoreInitConfig(core, NULL)` allocates config hash tables that `core->deinit(core)` does not free; always call `mCoreConfigDeinit(&core->config)` before `core->deinit(core)` (including error paths) to keep LSan clean.
 - Because `fe7` targets compile with `-fno-rtti` while GoogleTest compiles with RTTI, `.bazelrc` keeps `--copt=-fno-sanitize=vptr` under `--config=asan` to prevent false-positive UBSan vptr errors.
+- Under Bazel 9 + Clang + `--config=asan`, `absl/debugging:leak_check` includes `<sanitizer/lsan_interface.h>`, which fails `layering_check` unless `.bazelrc` sets `build:asan --features=-layering_check`.
+- Keep `//runtime:gba_hal` as a header-only `cc_library` separate from `//runtime:mgba_hal`, and keep `runtime/BUILD.bazel` `default_visibility` restricted to `//runtime:__subpackages__` (exposing only `:gba_ptr`, `:gba_hal`, `:dispatch` to `//game:__subpackages__`) so `game/` targets never transitively depend on `@mgba`.
