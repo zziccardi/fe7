@@ -19,6 +19,7 @@
 #include "game/engine/clock.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
+#include "game/item/item.h"
 #include "game/register_all.h"
 #include "game/unit.h"
 #include "game/unit/unit.h"
@@ -42,6 +43,10 @@ enum class FuzzMode {
   kFormatTimePtrs,
   kUnitPtrInR0,
   kUnitCopyPtrs,
+  kUnitAndItem,
+  kUnitAndSlot,
+  kItemAndUnit,
+  kValidItemInR0,
   kTracesOnly,
 };
 
@@ -119,6 +124,69 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"GetUnit", fe7::kAddrGetUnit, true, FuzzMode::kScalarRegs},
     {"GetJobInfo", fe7::kAddrGetJobInfo, true, FuzzMode::kScalarRegs},
     {"GetPersonInfo", fe7::kAddrGetPersonInfo, true, FuzzMode::kScalarRegs},
+    // Wave 2: Items & Weapon Stats (0x08016040..0x080174AC)
+    {"GetItemHpBonus", fe7::kAddrItemHpBonus, true, FuzzMode::kValidItemInR0},
+    {"GetItemPowBonus", fe7::kAddrItemPowBonus, true, FuzzMode::kValidItemInR0},
+    {"GetItemSklBonus", fe7::kAddrItemSklBonus, true, FuzzMode::kValidItemInR0},
+    {"GetItemSpdBonus", fe7::kAddrItemSpdBonus, true, FuzzMode::kValidItemInR0},
+    {"GetItemDefBonus", fe7::kAddrItemDefBonus, true, FuzzMode::kValidItemInR0},
+    {"GetItemResBonus", fe7::kAddrItemResBonus, true, FuzzMode::kValidItemInR0},
+    {"GetItemLckBonus", fe7::kAddrItemLckBonus, true, FuzzMode::kValidItemInR0},
+    {"CreateItem", fe7::kAddrCreateItem, true, FuzzMode::kScalarRegs},
+    {"CanUnitUseWeapon", fe7::kAddrCanUnitUseWeapon, true,
+     FuzzMode::kUnitAndItem},
+    {"CanUnitUseWeaponNow", fe7::kAddrCanUnitUseWeaponNow, true,
+     FuzzMode::kUnitAndItem},
+    {"CanUnitUseStaff", fe7::kAddrCanUnitUseStaff, true,
+     FuzzMode::kUnitAndItem},
+    {"CanUnitUseStaffNow", fe7::kAddrCanUnitUseStaffNow, true,
+     FuzzMode::kUnitAndItem},
+    {"GetItemAfterUse", fe7::kAddrGetItemAfterUse, true, FuzzMode::kScalarRegs},
+    {"GetUnitEquippedWeapon", fe7::kAddrUnitEquippedWeapon, true,
+     FuzzMode::kUnitPtrInR0},
+    {"GetUnitEquippedWeaponSlot", fe7::kAddrUnitEquippedWeaponSlot, true,
+     FuzzMode::kUnitPtrInR0},
+    {"CanItemReachDistance", fe7::kAddrCanItemReachDistance, true,
+     FuzzMode::kScalarRegs},
+    {"UnitEquipItemSlot", fe7::kAddrUnitEquipItemSlot, false,
+     FuzzMode::kUnitAndSlot},
+    {"IsItemEffectiveAgainst", fe7::kAddrIsItemEffectiveAgainst, true,
+     FuzzMode::kItemAndUnit},
+    {"GetWeaponLevelFromExp", fe7::kAddrGetWeaponLevelFromExp, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemIid", fe7::kAddrGetItemIid, true, FuzzMode::kScalarRegs},
+    {"GetItemDescId", fe7::kAddrGetItemDescId, true, FuzzMode::kScalarRegs},
+    {"GetItemUseDescId", fe7::kAddrGetItemUseDescId, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemKind", fe7::kAddrGetItemKind, true, FuzzMode::kScalarRegs},
+    {"GetItemAttributes", fe7::kAddrGetItemAttributes, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemUses", fe7::kAddrGetItemUses, true, FuzzMode::kScalarRegs},
+    {"GetItemMaxUses", fe7::kAddrGetItemMaxUses, true, FuzzMode::kScalarRegs},
+    {"GetItemMight", fe7::kAddrGetItemMight, true, FuzzMode::kScalarRegs},
+    {"GetItemHit", fe7::kAddrGetItemHit, true, FuzzMode::kScalarRegs},
+    {"GetItemWeight", fe7::kAddrGetItemWeight, true, FuzzMode::kScalarRegs},
+    {"GetItemCrit", fe7::kAddrGetItemCrit, true, FuzzMode::kScalarRegs},
+    {"GetItemValue", fe7::kAddrGetItemValue, true, FuzzMode::kScalarRegs},
+    {"GetItemMinRange", fe7::kAddrGetItemMinRange, true, FuzzMode::kScalarRegs},
+    {"GetItemMaxRange", fe7::kAddrGetItemMaxRange, true, FuzzMode::kScalarRegs},
+    {"GetItemEncodedRange", fe7::kAddrGetItemEncodedRange, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemRequiredExp", fe7::kAddrGetItemRequiredExp, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemEffectiveness", fe7::kAddrGetItemEffectiveness, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemBonuses", fe7::kAddrGetItemBonuses, true, FuzzMode::kScalarRegs},
+    {"GetItemIcon", fe7::kAddrGetItemIcon, true, FuzzMode::kScalarRegs},
+    {"GetItemWeaponEffect", fe7::kAddrGetItemWeaponEffect, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemEffect", fe7::kAddrGetItemEffect, true, FuzzMode::kScalarRegs},
+    {"GetItemCostPerUse", fe7::kAddrGetItemCostPerUse, true,
+     FuzzMode::kScalarRegs},
+    {"GetItemMaxValue", fe7::kAddrGetItemMaxValue, true, FuzzMode::kScalarRegs},
+    {"GetItemWeaponExp", fe7::kAddrGetItemWeaponExp, true,
+     FuzzMode::kScalarRegs},
+    {"GetIInfo", fe7::kAddrGetIInfo, true, FuzzMode::kScalarRegs},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -244,6 +312,59 @@ std::vector<fe7::TraceRecord> MakeUnitTraces(uint32_t gba_addr, size_t count,
   return out;
 }
 
+// Synthesizes traces with valid FE7 US item IDs (0x00..0x9F) and random uses.
+std::vector<fe7::TraceRecord> MakeValidItemTraces(uint32_t gba_addr,
+                                                  size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x17E30001u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+    const uint32_t iid = (i == 0) ? 0u : (NextXorshift(rng) % 0x9Fu);
+    const uint32_t uses = NextXorshift(rng) & 0xFFu;
+    rec.regs[0] = (uses << 8) | iid;
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
+// Synthesizes traces pairing a populated Unit with a valid item or slot index.
+std::vector<fe7::TraceRecord> MakeUnitItemTraces(uint32_t gba_addr,
+                                                 size_t count, FuzzMode mode) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x17E30002u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::gMem.ewram, fe7::gMem.ewram + fe7::kEwramSize);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr uint32_t kUnitOffset = 0x2000u;
+    PopulateSyntheticUnit(rec.ewram, kUnitOffset, rng);
+    const uint32_t unit_addr = 0x02000000u + kUnitOffset;
+    const uint32_t iid = (i == 0) ? 0u : (NextXorshift(rng) % 0x9Fu);
+    const uint32_t item = ((NextXorshift(rng) & 0x3Fu) << 8) | iid;
+
+    if (mode == FuzzMode::kUnitAndItem) {
+      rec.regs[0] = unit_addr;
+      rec.regs[1] = item;
+    } else if (mode == FuzzMode::kUnitAndSlot) {
+      rec.regs[0] = unit_addr;
+      rec.regs[1] =
+          NextXorshift(rng) % static_cast<uint32_t>(fe7::kUnitItemCount);
+    } else {
+      rec.regs[0] = item;
+      rec.regs[1] = unit_addr;
+    }
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -328,6 +449,21 @@ int main(int argc, char** argv) {
       case FuzzMode::kUnitCopyPtrs: {
         auto unit_traces = MakeUnitTraces(entry.gba_addr, fuzz_iters, true);
         res = fe7::DiffFunction(entry.gba_addr, fn, unit_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kValidItemInR0: {
+        auto item_traces = MakeValidItemTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, item_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kUnitAndItem:
+      case FuzzMode::kUnitAndSlot:
+      case FuzzMode::kItemAndUnit: {
+        auto ui_traces =
+            MakeUnitItemTraces(entry.gba_addr, fuzz_iters, entry.fuzz_mode);
+        res = fe7::DiffFunction(entry.gba_addr, fn, ui_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }
