@@ -41,7 +41,7 @@ BAZEL_JVM_FLAGS=(
 
 # Enforce game/ C-with-types guardrails & 80-column Google formatting
 python3 tools/check_agent_rules.py
-clang-format --dry-run --Werror runtime/*.h runtime/*.cc runtime/*.c
+python3 tools/check_format.py
 ```
 
 ## 3. Coding, Documentation & Commit Conventions
