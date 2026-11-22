@@ -219,6 +219,7 @@ cc_binary(
         "//game/action:action",
         "//game/ai:ai",
         "//game/ai:ai_actions",
+        "//game/ai:ai_combat",
         "//game/ai:ai_decide",
         "//game/ai:ai_opcodes",
         "//game/ai:ai_script",
