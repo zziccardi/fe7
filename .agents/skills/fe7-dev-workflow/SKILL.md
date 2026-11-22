@@ -39,9 +39,10 @@ BAZEL_JVM_FLAGS=(
 "$BAZEL" "${BAZEL_JVM_FLAGS[@]}" test //...
 "$BAZEL" "${BAZEL_JVM_FLAGS[@]}" test --config=release //...
 
-# Enforce game/ C-with-types guardrails & 80-column Google formatting
+# Enforce game/ C-with-types guardrails, 80-column Google formatting, & tool tests
 python3 tools/check_agent_rules.py
-clang-format --dry-run --Werror runtime/*.h runtime/*.cc runtime/*.c
+python3 tools/check_format.py
+python3 -m unittest discover -s tools -p '*_test.py' -v
 ```
 
 ## 3. Coding, Documentation & Commit Conventions

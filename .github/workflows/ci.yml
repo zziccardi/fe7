@@ -25,15 +25,14 @@ jobs:
           restore-keys: |
             bazel-${{ runner.os }}-
 
-      - name: Check Google C++ 80-column formatting
-        run: |
-          FILES=$(find runtime game -type f \( -name '*.h' -o -name '*.cc' -o -name '*.c' \) 2>/dev/null || true)
-          if [ -n "$FILES" ]; then
-            clang-format --dry-run --Werror $FILES
-          fi
+      - name: Check Google C++ 80-column formatting (allowing column alignment)
+        run: python3 tools/check_format.py
 
       - name: Check game/ agent coding rules
         run: python3 tools/check_agent_rules.py
+
+      - name: Run Python tool unit tests
+        run: python3 -m unittest discover -s tools -p '*_test.py' -v
 
       - name: Run unit tests (ASan + UBSan + LSan)
         run: bazel test --config=asan //...
