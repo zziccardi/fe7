@@ -7,10 +7,13 @@
 #include "game/ai/ai.h"
 #include "game/ai/ai_combat.h"
 #include "game/ai/ai_decide.h"
+#include "game/battle.h"
+#include "game/battle/battle_exp.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item.h"
 #include "game/item/item.h"
+#include "game/map/ballista.h"
 #include "game/map/trap.h"
 #include "game/phase/phase.h"
 #include "game/proc.h"
@@ -189,6 +192,62 @@ TEST_F(SkirmishIntegrationTest, StatusEffectsAndAutoEndTurnFlow) {
   SetAutoEndTurn(true);
   PlayerPhaseHandleAutoEnd(phase_proc);
   EXPECT_NE(phase_proc->proc_script_pc.addr, pc_before);
+}
+
+TEST_F(SkirmishIntegrationTest, BallistaMountCombatAmmoAndDismount) {
+  RandInit(kRngSeedBallista);
+
+  RegisterItem({.id = kIidBallista,
+                .kind = ItemKind::kBallista,
+                .attributes = kItemAttrWeapon | kItemAttrUncounterable,
+                .max_uses = 2,
+                .might = 10,
+                .hit = 85,
+                .weight = 20,
+                .encoded_range = kEncodedRange3To10,
+                .required_wexp = kWexpERank,
+                .wexp_gain = 1});
+
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> brigand_b = BrigandB();
+
+  // 1. Spawn a 2-ammo ballista at Lyn's tile (1, 3).
+  GbaPtr<Trap> ballista = AddBallista(1, 3, kIidBallista);
+  ASSERT_TRUE(static_cast<bool>(ballista));
+  EXPECT_TRUE(IsBallistaTrap(AsConst(ballista)));
+  EXPECT_EQ(GetBallistaAt(1, 3).addr, ballista.addr);
+  EXPECT_EQ(GetItemUses(GetBallistaItemAtPos(1, 3)), 2);
+
+  // 2. Lyn mounts the ballista; `kUnitFlagInBallista` is set and she fires at
+  //    Brigand B (distance 5, within 3-10 range).
+  UnitRideBallista(lyn);
+  EXPECT_NE(lyn->flags & kUnitFlagInBallista, 0u);
+  EXPECT_TRUE(CanItemReachDistance(GetBallistaItemFromTrap(AsConst(ballista)),
+                                   /*distance=*/5));
+
+  // 3. Fire shot #1 with `kBattleConfigBallista` and sync ammo via
+  //    `BattleApplyBallistaUpdates()` -> 1 use remaining.
+  lyn->items[0] = static_cast<uint16_t>(GetBallistaItemAtPos(1, 3));
+  RunCombatExchange(lyn, brigand_b, kBattleConfigReal | kBattleConfigBallista);
+  BattleApplyBallistaUpdates();
+  EXPECT_EQ(GetItemUses(GetBallistaItemAtPos(1, 3)), 1);
+
+  // 4. Deplete the final shot -> `GetBallistaAt` returns null (out of ammo),
+  //    while `GetBallistaItemAtIgnoreUses` still identifies the empty trap.
+  brigand_b->hp = brigand_b->max_hp;
+  brigand_b->flags &= ~kUnitFlagDead;
+  lyn->items[0] = static_cast<uint16_t>(GetBallistaItemAtPos(1, 3));
+  RunCombatExchange(lyn, brigand_b, kBattleConfigReal | kBattleConfigBallista);
+  BattleApplyBallistaUpdates();
+  EXPECT_FALSE(static_cast<bool>(GetBallistaAt(1, 3)));
+  EXPECT_EQ(GetItemIid(GetBallistaItemAtIgnoreUses(1, 3)), kIidBallista);
+
+  // 5. Dismounting clears `kUnitFlagInBallista` and keeps trap coordinates
+  //    synced with Lyn's tile.
+  TryRemoveUnitFromBallista(lyn);
+  EXPECT_EQ(lyn->flags & kUnitFlagInBallista, 0u);
+  EXPECT_EQ(ballista->x, lyn->x);
+  EXPECT_EQ(ballista->y, lyn->y);
 }
 
 }  // namespace

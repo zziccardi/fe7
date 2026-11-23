@@ -91,6 +91,7 @@ inline constexpr uint8_t kIidSteelAxe = 4;
 inline constexpr uint8_t kIidAngelicRobe = 5;
 inline constexpr uint8_t kIidLancereaver = 6;
 inline constexpr uint8_t kIidLuna = 7;
+inline constexpr uint8_t kIidBallista = 8;
 inline constexpr uint8_t kIidHealStaff = 0x4Au;
 inline constexpr uint8_t kIidVulnerary = 0x6Bu;
 
@@ -112,6 +113,7 @@ inline constexpr int kSupportRankA = 3;
 inline constexpr uint8_t kAiFlagRecovery = 1u;
 inline constexpr uint8_t kEncodedRange1To1 = 0x11u;
 inline constexpr uint8_t kEncodedRange1To2 = 0x12u;
+inline constexpr uint8_t kEncodedRange3To10 = 0x3Au;
 
 // PlayStatus / AiState / Proc field offsets (private to fixture helpers).
 inline constexpr uint32_t kPlayStatusVisionOffset = 0x0Du;
@@ -141,6 +143,7 @@ inline constexpr int kRngSeedWeaponBreak = 0x5678;
 inline constexpr int kRngSeedSpecialCombat = 0x9ABC;
 inline constexpr int kRngSeedTacticalFog = 0xC0FFEE;
 inline constexpr int kRngSeedStatusFlow = 0x57A705;
+inline constexpr int kRngSeedBallista = 0xBA1115;
 inline constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
 inline constexpr int kRngSeedProcLoop = 0x6C0001;
 
