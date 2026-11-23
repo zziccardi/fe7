@@ -23,3 +23,6 @@ All code in `game/` (colocated `.h`, `.cc`, and `_test.cc` files) must follow th
 - Raw `reinterpret_cast` from `uint32_t` or raw integer addresses (use `GbaPtr<T>` or `hal::*`)
 - Hardcoded `240` or `160` screen dimensions in camera/UI layout logic (use `kViewportWidth` / `kViewportHeight`)
 - Direct dependencies on `SDL3`, `ImGui`, `libmgba`, or host OS headers (enforced by Bazel `visibility`)
+
+## Enforced in `testing/e2e/*_test.cc`
+- Direct hexadecimal literals (`0x...`) are forbidden inside `TEST`, `TEST_F`, and `TEST_P` bodies (enforced by `tools/check_agent_rules.py`). Define named constants or semantic helper methods in `testing/e2e/skirmish_fixture.{h,cc}` instead.

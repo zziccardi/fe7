@@ -4,7 +4,7 @@
 
 Build a **faithful, 100% native C++20 PC port** of *Fire Emblem: The Blazing Blade* (**FE7 US, `AE7E`**, validated by SHA-1 `c735fdbb9e8abe19e0c6a44708df19acc962e204`) targeting **Windows, Linux (including Steam Deck), and macOS**, engineered from day one with clean seams for post-1.0 modern enhancements (**widescreen 16:9 viewport**, **HD text/fonts**, **fast-forward / save states / turn rewind**, **enemy danger-zone overlay**, **mouse/gamepad support**, and **ImGui debug tooling**).
 
-Rather than attempting a "big bang" translation of ~3,500 functions before the game boots, this plan uses a **Ship-of-Theseus (incremental replacement)** architecture:
+Rather than attempting a "big bang" translation of 6,568 ROM functions before the game boots, this plan uses a **Ship-of-Theseus (incremental replacement)** architecture:
 
 1. **Bootable on Week 1 (Mock-Testable Immediately):** Embed `libmgba` (MPL-2.0) behind an owned `GbaHal` interface to provide an accurate GBA hardware runtime (PPU, APU, DMA, timers, IRQs, BIOS SWIs) and an ARM7TDMI fallback CPU. Validate the entire bridge in Phase 1 with **synthetic Thumb unit tests (GoogleTest)** requiring no copyrighted ROM, then drop in any SHA-1-validated FE7 US ROM for live play.
 2. **Incremental Native Replacement:** AI coding agents translate batches of 5–15 related functions into strict **Google-style "C-with-types" C++20** (`.h`/`.cc`), leveraging local read-only mirrors of `fireemblem8u` and `fireemblem6j` (which share ~65–75% of Intelligent Systems' GBA engine) plus headless **Ghidra MCP** for FE7-exclusive logic.
@@ -41,7 +41,7 @@ flowchart TD
 > - To prevent struct-layout drift across parallel AI agent batches, **all canonical POD structs (`Unit`, `Proc`, `BattleUnit`, `BmSt`, etc.) and shared headers in `game/*.h` are human-reviewed before merge**, locked with `static_assert(sizeof(...))` and `static_assert(offsetof(...))` checks matching FE7 US's exact RAM layout.
 
 > [!WARNING]
-> **Strict Aliasing & Host Endianness Assumption:** `GbaPtr<T>` direct-maps into mGBA's little-endian EWRAM/IWRAM/ROM buffers for clean, readable C++ (`unit->cur_hp -= dmg;`). This requires compiling `game/` with `-fno-strict-aliasing`, assuming little-endian desktop targets (x86-64 / ARM64), and explicitly handling unaligned ROM struct reads via helper templates where needed.
+> **Strict Aliasing & Host Endianness Assumption:** `GbaPtr<T>` direct-maps into mGBA's little-endian EWRAM/IWRAM/ROM buffers for clean, readable C++ (`unit->hp -= dmg;`). This requires compiling `game/` with `-fno-strict-aliasing`, assuming little-endian desktop targets (x86-64 / ARM64), and explicitly handling unaligned ROM struct reads via helper templates where needed.
 
 > [!NOTE]
 > **mGBA Dispatch Hook Maintenance:** Intercepting Thumb/ARM function calls inside `libmgba` requires a small (~150-line) patch on a pinned `libmgba` archive (hooking `ARMRunLoop` / Thumb branch targets + a clean re-entrant `CallFallback(addr, r0..r3)` bridge). Because the `libmgba` CPU fallback is deleted in Phase 4, this patch only needs to track a single pinned release tag.
@@ -247,7 +247,7 @@ sequenceDiagram
 
 #### [NEW] `runtime/sdl_frontend.cc` & `runtime/tas_runner.cc`
 - **SDL3 interactive frontend (`fe7_native`):** Uses `absl::flags`, 60 Hz pacing, integer/aspect scaling, keyboard + SDL3 Gamepad input, `.sav` Flash/SRAM persistence, fast-forward toggle, instant save-state slots, and optional **ImGui debug overlay** (live RNG state, active `Proc` tree, hovered unit inspector, native vs. fallback execution % meter).
-- **Headless TAS runner (`fe7_headless`):** Uses `absl::flags`, runs `.vbm`/`.bk2`/JSON input movies without SDL video/audio, dumping per-frame RNG state, unit array checksums, and framebuffer SHA-256 checkpoints.
+- **Headless TAS runner (`fe7_headless`):** Uses `absl::flags`, runs `.fe7in` scripted GBA button input files without SDL video/audio, dumping per-frame 64-bit FNV-1a checkpoints of EWRAM, static IWRAM (`0x03000000..0x030077FF`), and the framebuffer.
 
 #### [NEW] Colocated `runtime/*_test.cc` (Phase 1 Mock / Synthetic Unit Tests via GoogleTest)
 Validates the entire Phase 1 runtime **without needing a retail FE7 ROM**:
@@ -359,8 +359,8 @@ static_assert(std::is_trivially_copyable_v<Unit>);
 | Wave | Directory | Scope | Status & Strategy |
 | :--- | :--- | :--- | :--- |
 | **Wave 1** | `game/engine/` | `rng` (10), `clock` (4), `proc` (23 + 26-opcode interpreter), plus `hardware`, `dma`, `oam`, `bg`, `irq`, `main` (~10%) | **In Progress** (`rng`, `clock`, `proc` complete & verified; remaining: low-level `hardware`/`dma`/`oam`/`bg`/`irq`/`main`). |
-| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & math (`unit` 29, `item` 43, `battle` 20, `map` 18, `map_range` 13, `save`, ~25%) | **Mostly Complete** (`unit`, `item`, `battle`, `map`, `map_range` complete & verified; remaining: `game/save/`). |
-| **Wave 3** | `game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/` | Tactical gameplay & complete Enemy AI engine: `battle_sim` (22), `battle_gen` (9), `battle_exp` (26), `phase` + events/flags (31), `support` (22), `trap` traps/obstacles/light runes/fog/entity maps (27), `ballista` (8), `action` unit actions/rescue/drop/give/autolevel/stat boosters (26), and complete **Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28, `ai_staff_loot` 33 — 230 AI functions) | **Milestone Complete** (all tactical gameplay, leaf helpers & complete Enemy AI modules + pure-native multi-turn E2E skirmishes verified across 32 ASan test suites and 555/555 `fe7_diff` functions). |
+| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & math (`unit` 29, `item` 45, `battle` 20, `map` 18, `map_range` 13, `save`, ~25%) | **Mostly Complete** (`unit`, `item`, `battle`, `map`, `map_range` complete & verified; remaining: `game/save/`). |
+| **Wave 3** | `game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/` | Tactical gameplay & complete Enemy AI engine: `battle_sim` (22), `battle_gen` (9), `battle_exp` (26), `phase` + events/flags (31), `support` (22), `trap` traps/obstacles/light runes/fog/entity maps (27), `ballista` (8), `action` unit actions/rescue/drop/give/autolevel/stat boosters (26), and complete **Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28, `ai_staff_loot` 33 — 230 AI functions) | **Milestone Complete** (all tactical gameplay, leaf helpers & complete Enemy AI modules + pure-native multi-turn E2E skirmishes verified across 34 ASan test suites, 563 registered native functions, and 555/555 `fe7_diff` functions). |
 | **Wave 4** | `game/audio/`, `game/save/` | `m4a` C driver + clean C++ `SoundMainRAM` mixer, `libc`/BIOS wrappers, save/suspend (`~10%`) | Planned next (`libmgba` APU runs `m4a` cleanly in fallback during Waves 1–3). |
 | **Wave 5** | `game/ui/` | `talk`, `face`, `font`, menus, prep screen, shop, arena, world map, event interpreter, Lyn tutorials, Link Arena UI (~20%) | Use `kViewportWidth`/`kViewportHeight` and `hal::TextHookDrawGlyph` seams; stub low-level SIO via `hal::link`. |
 | **Wave 6** | `game/banim/` | `ekrbattle`, `efx`, spell scripts, Quintessence, Fire Dragon, CGs, sound room, credits (~20%) | Highly parallelizable state-machine procs across agent PR batches. |

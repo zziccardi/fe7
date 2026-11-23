@@ -9,7 +9,7 @@ assembly translation patterns, *Fire Emblem: The Blazing Blade* (FE7 US,
 | Document | What It Covers |
 | --- | --- |
 | [GBA Hardware Reference](gba_hardware.md) | ARM7TDMI CPU states & pipeline, full 32-bit GBA memory map, bus width & alignment rules, PPU/DMA/IRQ/BIOS SWIs, and how `runtime/` (`GbaPtr<T>`, `GbaHal`, `DispatchTable`) bridges them. |
-| [Thumb-1 Assembly & C++20 Translation](thumb_assembly.md) | Registers, ARM AAPCS calling convention, Thumb-1 instruction reference, two complete instruction-by-instruction walkthroughs (`RandNextB` and `ComputeBattleUnitEffectiveHitRate` / `RandRoll2Rn`), and common GCC-2.9/ARM7TDMI idioms & bit-exactness traps. |
+| [Thumb-1 Assembly & C++20 Translation](thumb_assembly.md) | Registers, ARM AAPCS calling convention, Thumb-1 instruction reference, two complete instruction-by-instruction walkthroughs (`RandNextB` and `RandRoll2Rn`), and common GCC-2.9/ARM7TDMI idioms & bit-exactness traps. |
 | [FE7 US Engine & Business Logic](fe7_business_logic.md) | Canonical EWRAM/IWRAM/ROM memory map, RNG (1-RN / 2-RN True Hit + LCG), 6C Proc cooperative scheduler, Units/Items/Weapon Ranks, Combat formulas & simulation, EXP/Level-Up/Promotion, Map & BFS pathfinding, Turn/Phase flow, Supports, Enemy AI, and FE7 US vs. FE8 / FE7J differences. |
 | [Decompilation & Verification Workflow](decompilation_workflow.md) | Step-by-step guide for translating a Thumb function into Google-style "C-with-types" C++20, writing synthetic GoogleTest unit tests, and verifying 0-mismatch equivalence with `fe7_diff` and `e2e_lockstep.py`. |
 | [Implementation Plan](implementation_plan.md) | Master architectural roadmap (Phases 1–5), Ship-of-Theseus dispatch design, and build-graph isolation rules. |
