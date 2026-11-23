@@ -50,7 +50,7 @@ flowchart TD
 
 ## Resolved Decisions
 
-- **License:** **MIT** for all new `fe7` code (with pinned `third_party/mgba` patches remaining file-level MPL-2.0 until Phase 4/5 retirement).
+- **License:** Split license — **GPL-3.0** for original runtime, tooling & test suites (`runtime/`, `tools/`, `testing/`), **no license granted** (explicitly excluded; non-commercial educational/preservation only) for decompiled game logic (`game/`), and file-level **MPL-2.0** for pinned `third_party/mgba` patches until Phase 4/5 retirement.
 - **Build System:** **Bazel (Bzlmod)** with Clang + C++20, GoogleTest and Abseil (`abseil-cpp`) from BCR, strict `visibility` boundaries between `game/` and `runtime/`, and focused `BUILD.bazel` overlays for `libmgba` GBA core + `SDL3`.
 - **Repository:** New **private** GitHub repository named `fe7`.
 
@@ -68,7 +68,7 @@ Changes are organized into sequential phases.
 - Create a new **private** GitHub repository named `fe7` via `create_github_repository` (requires this conversation to be attached to a Project).
 - Initialize with:
   - `.gitignore` (explicitly ignoring `*.gba`, `*.sav`, `corpus/`, `bazel-*`, `.ghidra/`)
-  - `LICENSE` (MIT)
+  - `LICENSE` + `LICENSE-GPLv3` (split GPL-3.0 for `runtime/`, `tools/`, & `testing/`, explicit exclusion for `game/`)
   - `README.md` (project overview, SHA-1 ROM requirement, architecture summary)
 
 ---
