@@ -24,6 +24,7 @@
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
+#include "game/ai/ai_staff_loot.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
@@ -84,6 +85,7 @@ enum class FuzzMode {
   kBallistaState,
   kBattleGenState,
   kMapRangeState,
+  kAiStaffLootState,
   kTracesOnly,
 };
 
@@ -1040,6 +1042,74 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kMapRangeState},
     {"GetMapRangeBlinkColorB", fe7::kAddrGetMapRangeBlinkColorB, true,
      FuzzMode::kMapRangeState},
+    // Group 4: AI status staves, door/chest/antitoxin & AI map-flood (33).
+    {"AiTryWarpStaff", fe7::kAddrAiTryWarpStaff, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiTryRestoreStaff", fe7::kAddrAiTryRestoreStaff, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiUnitHasUsableWeaponOrStaff", fe7::kAddrAiUnitHasUsableWeaponOrStaff,
+     true, FuzzMode::kAiStaffLootState},
+    {"AiGetStatusStaffTargetScore", fe7::kAddrAiGetStatusStaffTargetScore, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiTrySilenceStaff", fe7::kAddrAiTrySilenceStaff, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiTrySleepOrBerserkStaff", fe7::kAddrAiTrySleepOrBerserkStaff, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiTryBarrierStaff", fe7::kAddrAiTryBarrierStaff, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiFindBestWarpDestination", fe7::kAddrAiFindBestWarpDestination, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiGetSpecialItemTableIndex", fe7::kAddrAiGetSpecialItemTableIndex, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiTryDoorOrChestAction", fe7::kAddrAiTryDoorOrChestAction, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiTryUseDoorKey", fe7::kAddrAiTryUseDoorKey, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiTryUseChestKeyOrLockpick", fe7::kAddrAiTryUseChestKeyOrLockpick, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiTryUseAntitoxin", fe7::kAddrAiTryUseAntitoxin, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiGetRangeCostIfPassable", fe7::kAddrAiGetRangeCostIfPassable, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiFindReachableDoor", fe7::kAddrAiFindReachableDoor, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiFindReachableChest", fe7::kAddrAiFindReachableChest, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiFindReachableDoorOrChest", fe7::kAddrAiFindReachableDoorOrChest, true,
+     FuzzMode::kAiStaffLootState},
+    {"AiSetMovTableAllPassable", fe7::kAddrAiSetMovTableAllPassable, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiSetMovTableAllowOneTerrain", fe7::kAddrAiSetMovTableAllowOneTerrain,
+     false, FuzzMode::kAiStaffLootState},
+    {"AiSetMovTableAllowTwoTerrains", fe7::kAddrAiSetMovTableAllowTwoTerrains,
+     false, FuzzMode::kAiStaffLootState},
+    {"AiMapFloodUnitExtended", fe7::kAddrAiMapFloodUnitExtended, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodRangeExtended", fe7::kAddrAiMapFloodRangeExtended, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodUnitAllPassable", fe7::kAddrAiMapFloodUnitAllPassable, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodUnitAllPassableNoUnit",
+     fe7::kAddrAiMapFloodUnitAllPassableNoUnit, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodNoDoors", fe7::kAddrAiMapFloodNoDoors, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodNoDoorsUnit", fe7::kAddrAiMapFloodNoDoorsUnit, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodRangeAllowDoor", fe7::kAddrAiMapFloodRangeAllowDoor, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodRangeAllowDoorNoUnit", fe7::kAddrAiMapFloodRangeAllowDoorNoUnit,
+     false, FuzzMode::kAiStaffLootState},
+    {"AiMapFloodRangeAllowObstacles", fe7::kAddrAiMapFloodRangeAllowObstacles,
+     false, FuzzMode::kAiStaffLootState},
+    {"AiMapFloodObstacles", fe7::kAddrAiMapFloodObstacles, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiMapFloodRangeUnitMov", fe7::kAddrAiMapFloodRangeUnitMov, false,
+     FuzzMode::kAiStaffLootState},
+    {"AiUpdateIgnoreSpecialItemsFlag", fe7::kAddrAiUpdateIgnoreSpecialItemsFlag,
+     false, FuzzMode::kAiStaffLootState},
+    {"AiMapFloodRangeWithUnit", fe7::kAddrAiMapFloodRangeWithUnit, false,
+     FuzzMode::kAiStaffLootState},
 };
 
 uint32_t NextXorshift(uint32_t& state) {
@@ -4300,6 +4370,224 @@ std::vector<fe7::TraceRecord> MakeMapRangeTraces(uint32_t gba_addr,
   return out;
 }
 
+std::vector<fe7::TraceRecord> MakeAiStaffLootTraces(uint32_t gba_addr,
+                                                    size_t count) {
+  std::vector<fe7::TraceRecord> out;
+  out.reserve(count);
+  uint32_t rng = 0x57AFF100u ^ gba_addr;
+  for (size_t i = 0; i < count; ++i) {
+    fe7::TraceRecord rec;
+    rec.gba_addr = gba_addr;
+    rec.ewram.assign(fe7::kEwramSize, 0u);
+    rec.iwram.assign(fe7::gMem.iwram, fe7::gMem.iwram + fe7::kIwramSize);
+
+    constexpr int kW = 8;
+    constexpr int kH = 8;
+    const fe7::MapSize sz{kW, kH};
+    std::memcpy(rec.ewram.data() + (fe7::kMapSizeAddr - 0x02000000u), &sz,
+                sizeof(sz));
+    const uint32_t unit_rows_ptr = InitSyntheticMapBuffer(
+        rec.ewram, 0x11000u, fe7::kMapUnitAddr, kW, kH, 0x00u);
+    const uint32_t ter_rows_ptr = InitSyntheticMapBuffer(
+        rec.ewram, 0x11400u, fe7::kMapTerrainAddr, kW, kH, 0x00u);
+    InitSyntheticMapBuffer(rec.ewram, 0x11800u, fe7::kMapMovementAddr, kW, kH,
+                           0xFFu);
+    const uint32_t rng_rows_ptr = InitSyntheticMapBuffer(
+        rec.ewram, 0x11C00u, fe7::kMapRangeAddr, kW, kH, 0x02u);
+    InitSyntheticMapBuffer(rec.ewram, 0x12000u, fe7::kMapFogAddr, kW, kH,
+                           0x01u);
+    InitSyntheticMapBuffer(rec.ewram, 0x12400u, fe7::kMapHiddenAddr, kW, kH,
+                           0x00u);
+    InitSyntheticMapBuffer(rec.ewram, 0x12800u, fe7::kMapOtherAddr, kW, kH,
+                           0x00u);
+
+    auto set_cell = [&](uint32_t rows_ptr, int x, int y, uint8_t v) {
+      uint32_t r = 0u;
+      std::memcpy(&r,
+                  rec.ewram.data() + (rows_ptr - 0x02000000u) +
+                      static_cast<uint32_t>(y * 4),
+                  4);
+      rec.ewram[(r - 0x02000000u) + static_cast<uint32_t>(x)] = v;
+    };
+
+    // Interior plains (0x01), plus a Door (0x1E) at (4, 2) and Chest (0x21) at
+    // (2, 5).
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < kW; ++x) {
+        set_cell(ter_rows_ptr, x, y, 0x01u);
+      }
+    }
+    set_cell(ter_rows_ptr, 4, 2, 0x1Eu);
+    set_cell(ter_rows_ptr, 2, 5, 0x21u);
+
+    std::memcpy(rec.iwram.data() + (fe7::kWorkingMapAddr - 0x03000000u),
+                &rng_rows_ptr, 4);
+    rec.iwram[(fe7::kMapFloodStAddr - 0x03000000u) + 0x0Bu] = 0x78u;
+    rec.iwram[fe7::kWorkingMovTableAddr - 0x03000000u] = 0xFFu;
+
+    // Populate Red 0x81 (active) at (2, 2), Red 0x82 (ally) at (3, 2), and
+    // Blue 1 (enemy) at (5, 3).
+    const uint32_t e1_off = fe7::GetUnit(0x81).addr - 0x02000000u;
+    const uint32_t e2_off = fe7::GetUnit(0x82).addr - 0x02000000u;
+    const uint32_t u1_off = fe7::GetUnit(1).addr - 0x02000000u;
+    PopulateSyntheticUnit(rec.ewram, e1_off, rng);
+    PopulateSyntheticUnit(rec.ewram, e2_off, rng);
+    PopulateSyntheticUnit(rec.ewram, u1_off, rng);
+
+    fe7::Unit e1{};
+    std::memcpy(&e1, rec.ewram.data() + e1_off, sizeof(e1));
+    e1.id = static_cast<int8_t>(0x81);
+    e1.x = 2;
+    e1.y = 2;
+    e1.flags = 0u;
+    e1.status = static_cast<uint8_t>(NextXorshift(rng) % 2u);
+    e1.ai_config = (NextXorshift(rng) & 1u) ? 0x2000u : 0x0000u;
+    e1.items[0] = 0x1401u;
+    e1.items[1] = 0x0169u;  // Door Key
+    e1.items[2] = 0x016Au;  // Lockpick
+    e1.items[3] = 0x016Cu;  // Antitoxin
+    e1.items[4] = 0u;
+    std::memcpy(rec.ewram.data() + e1_off, &e1, sizeof(e1));
+
+    fe7::Unit e2{};
+    std::memcpy(&e2, rec.ewram.data() + e2_off, sizeof(e2));
+    e2.id = static_cast<int8_t>(0x82);
+    e2.x = 3;
+    e2.y = 2;
+    e2.flags = 0u;
+    e2.level = 5;
+    e2.status = static_cast<uint8_t>(NextXorshift(rng) % 3u);
+    e2.ai_flags = 0u;
+    std::memcpy(rec.ewram.data() + e2_off, &e2, sizeof(e2));
+
+    fe7::Unit u1{};
+    std::memcpy(&u1, rec.ewram.data() + u1_off, sizeof(u1));
+    u1.id = 1;
+    u1.x = 5;
+    u1.y = 3;
+    u1.flags = 0u;
+    u1.level = 6;
+    u1.status = static_cast<uint8_t>(NextXorshift(rng) % 4u);
+    u1.items[0] = (NextXorshift(rng) & 1u) ? 0x1401u : 0x1438u;  // Sword / Fire
+    std::memcpy(rec.ewram.data() + u1_off, &u1, sizeof(u1));
+
+    set_cell(unit_rows_ptr, 2, 2, 0x81u);
+    set_cell(unit_rows_ptr, 3, 2, 0x82u);
+    set_cell(unit_rows_ptr, 5, 3, 0x01u);
+
+    // Active unit = Red 0x81, active faction = Red (0x80).
+    const uint32_t e1_addr = fe7::GetUnit(0x81).addr;
+    const uint32_t u1_addr = fe7::GetUnit(1).addr;
+    std::memcpy(rec.iwram.data() + (fe7::kAiActiveUnitAddr - 0x03000000u),
+                &e1_addr, 4);
+    rec.ewram[fe7::kAiActiveUnitIdAddr - 0x02000000u] = 0x81u;
+    rec.ewram[(fe7::kMapPlayStatusAddr - 0x02000000u) + 0x0Fu] =
+        fe7::kFactionRed;
+
+    // Seed gAiState flags (0x7B, 0x7E, 0x80).
+    const uint32_t ai_off = fe7::kAiStateAddr - 0x02000000u;
+    rec.ewram[ai_off + 0x79u] = static_cast<uint8_t>(NextXorshift(rng) & 1u);
+    rec.ewram[ai_off + 0x7Bu] =
+        (NextXorshift(rng) % 4u == 0u) ? 4u : 0u;  // occasionally skip staff
+    rec.ewram[ai_off + 0x7Eu] = 0xFFu;
+    const uint32_t action_flags = 0x00000007u;  // Door + Chest + Antitoxin
+    std::memcpy(rec.ewram.data() + ai_off + 0x80u, &action_flags, 4);
+
+    // Seed a synthetic base mov table at 0x02018100 for mov-table helpers.
+    constexpr uint32_t kScratchPosAddr = 0x02018000u;
+    constexpr uint32_t kScratchMovAddr = 0x02018100u;
+    for (uint32_t t = 0; t <= 0x40u; ++t) {
+      rec.ewram[(kScratchMovAddr - 0x02000000u) + t] =
+          (t == 0u || t == 0x1Eu) ? 0xFFu : 1u;
+    }
+
+    switch (gba_addr) {
+      case fe7::kAddrAiTryWarpStaff:
+      case fe7::kAddrAiTryRestoreStaff:
+      case fe7::kAddrAiTrySilenceStaff:
+      case fe7::kAddrAiTrySleepOrBerserkStaff:
+      case fe7::kAddrAiTryBarrierStaff:
+        rec.regs[0] = NextXorshift(rng) % 4u;
+        rec.regs[1] = 0u;  // null target filter callback
+        break;
+      case fe7::kAddrAiUnitHasUsableWeaponOrStaff:
+      case fe7::kAddrAiGetStatusStaffTargetScore:
+        rec.regs[0] = (NextXorshift(rng) & 1u) ? u1_addr : e1_addr;
+        break;
+      case fe7::kAddrAiFindBestWarpDestination:
+        rec.regs[0] = kScratchPosAddr;
+        break;
+      case fe7::kAddrAiGetSpecialItemTableIndex: {
+        static constexpr uint16_t kItems[] = {0x0169u, 0x016Au, 0x016Cu,
+                                              0x1401u};
+        rec.regs[0] = kItems[NextXorshift(rng) % 4u];
+        break;
+      }
+      case fe7::kAddrAiTryDoorOrChestAction:
+        break;
+      case fe7::kAddrAiTryUseDoorKey:
+      case fe7::kAddrAiTryUseChestKeyOrLockpick:
+      case fe7::kAddrAiTryUseAntitoxin:
+        rec.regs[0] = NextXorshift(rng) % 4u;
+        break;
+      case fe7::kAddrAiGetRangeCostIfPassable:
+        rec.regs[0] = NextXorshift(rng) % kW;
+        rec.regs[1] = NextXorshift(rng) % kH;
+        break;
+      case fe7::kAddrAiFindReachableDoor:
+      case fe7::kAddrAiFindReachableChest:
+        rec.regs[0] = e1_addr;
+        rec.regs[1] = kScratchPosAddr;
+        break;
+      case fe7::kAddrAiFindReachableDoorOrChest:
+        rec.regs[0] = e1_addr;
+        rec.regs[1] = (NextXorshift(rng) & 1u) ? 4u : 0u;
+        rec.regs[2] = kScratchPosAddr;
+        break;
+      case fe7::kAddrAiSetMovTableAllPassable:
+        rec.regs[0] = kScratchMovAddr;
+        break;
+      case fe7::kAddrAiSetMovTableAllowOneTerrain:
+        rec.regs[0] = kScratchMovAddr;
+        rec.regs[1] = 0x1Eu;
+        break;
+      case fe7::kAddrAiSetMovTableAllowTwoTerrains:
+        rec.regs[0] = kScratchMovAddr;
+        rec.regs[1] = 0x1Bu;
+        rec.regs[2] = 0x33u;
+        break;
+      case fe7::kAddrAiMapFloodUnitExtended:
+      case fe7::kAddrAiMapFloodRangeExtended:
+      case fe7::kAddrAiMapFloodUnitAllPassable:
+      case fe7::kAddrAiMapFloodUnitAllPassableNoUnit:
+      case fe7::kAddrAiMapFloodRangeAllowDoor:
+      case fe7::kAddrAiMapFloodRangeAllowDoorNoUnit:
+      case fe7::kAddrAiMapFloodRangeAllowObstacles:
+      case fe7::kAddrAiMapFloodObstacles:
+      case fe7::kAddrAiMapFloodRangeUnitMov:
+      case fe7::kAddrAiUpdateIgnoreSpecialItemsFlag:
+        rec.regs[0] = e1_addr;
+        break;
+      case fe7::kAddrAiMapFloodNoDoors:
+        rec.regs[0] = 2u;
+        rec.regs[1] = 2u;
+        rec.regs[2] = kScratchMovAddr;
+        break;
+      case fe7::kAddrAiMapFloodNoDoorsUnit:
+      case fe7::kAddrAiMapFloodRangeWithUnit:
+        rec.regs[0] = 2u;
+        rec.regs[1] = 2u;
+        rec.regs[2] = e1_addr;
+        break;
+      default:
+        break;
+    }
+
+    out.push_back(std::move(rec));
+  }
+  return out;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -4507,6 +4795,12 @@ int main(int argc, char** argv) {
       case FuzzMode::kMapRangeState: {
         auto mr_traces = MakeMapRangeTraces(entry.gba_addr, fuzz_iters);
         res = fe7::DiffFunction(entry.gba_addr, fn, mr_traces, 0, 0xFE700001u,
+                                opts);
+        break;
+      }
+      case FuzzMode::kAiStaffLootState: {
+        auto sl_traces = MakeAiStaffLootTraces(entry.gba_addr, fuzz_iters);
+        res = fe7::DiffFunction(entry.gba_addr, fn, sl_traces, 0, 0xFE700001u,
                                 opts);
         break;
       }

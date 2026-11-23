@@ -8,6 +8,7 @@
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
+#include "game/ai/ai_staff_loot.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
 #include "game/battle/battle_gen.h"
@@ -49,6 +50,7 @@ void RegisterAllNativeFunctions() {
   RegisterAiActionFunctions();
   RegisterAiCombatFunctions();
   RegisterAiCpFunctions();
+  RegisterAiStaffLootFunctions();
   RegisterActionFunctions();
 }
 

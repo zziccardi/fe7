@@ -276,3 +276,39 @@ fe7_cc_test(
         "@abseil-cpp//absl/base:nullability",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ai_staff_loot",
+    srcs = ["ai_staff_loot.cc"],
+    hdrs = ["ai_staff_loot.h"],
+    deps = [
+        ":ai",
+        ":ai_actions",
+        ":ai_opcodes",
+        ":ai_script",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/map:map_range",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_staff_loot_test",
+    srcs = ["ai_staff_loot_test.cc"],
+    deps = [
+        ":ai",
+        ":ai_staff_loot",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/map:map",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
+

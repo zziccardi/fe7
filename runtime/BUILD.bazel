@@ -224,6 +224,7 @@ cc_binary(
         "//game/ai:ai_decide",
         "//game/ai:ai_opcodes",
         "//game/ai:ai_script",
+        "//game/ai:ai_staff_loot",
         "//game/battle:battle",
         "//game/battle:battle_exp",
         "//game/battle:battle_gen",
