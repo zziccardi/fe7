@@ -388,7 +388,7 @@ static_assert(std::is_trivially_copyable_v<Unit>);
    python3 tools/check_agent_rules.py
    python3 -m unittest discover -s tools -p '*_test.py' -v
    ```
-   Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, `DiffFunction` harness, `.fe7in` input script parser, canonical `game/` header `static_assert`s, unit tests for every decompiled subsystem, and `//testing/e2e:skirmish_integration_test` (multi-turn pure-native combat level exercising all 11 subsystems with zero fallback).
+   Covers `GbaPtr<T>` bounds/alignment, SHA-1 ROM validation, `DispatchTable` two-way Thumb↔C++ round-trips on synthetic Thumb payloads inside `libmgba`, `DiffFunction` harness, `.fe7in` input script parser, canonical `game/` header `static_assert`s, unit tests for every decompiled subsystem, and `//testing/e2e/...` (`combat_skirmish_test`, `tactical_systems_test`, `ai_turn_test` — multi-turn pure-native tactical scenarios exercising all decompiled subsystems with zero fallback).
 
 2. **Per-PR Live Differential & Fuzz Verification (Phases 2–4, with local retail ROM):**
    ```bash

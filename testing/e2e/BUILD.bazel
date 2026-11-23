@@ -1,17 +1,21 @@
 # End-to-end integration tests exercising multiple decompiled FE7 subsystems
 # together without requiring a retail GBA ROM.
 
-load("//bazel:fe7_rules.bzl", "fe7_cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel:fe7_rules.bzl", "FE7_RUNTIME_COPTS", "fe7_cc_test")
 
-fe7_cc_test(
-    name = "skirmish_integration_test",
-    srcs = ["skirmish_integration_test.cc"],
+cc_library(
+    name = "skirmish_fixture",
+    testonly = True,
+    srcs = ["skirmish_fixture.cc"],
+    hdrs = ["skirmish_fixture.h"],
+    copts = FE7_RUNTIME_COPTS,
     deps = [
         "//game:battle_hdr",
         "//game:item_hdr",
+        "//game:proc_hdr",
         "//game:register_all",
         "//game:unit_hdr",
-        "//game/action:action",
         "//game/ai:ai",
         "//game/ai:ai_actions",
         "//game/ai:ai_combat",
@@ -22,8 +26,6 @@ fe7_cc_test(
         "//game/battle:battle",
         "//game/battle:battle_exp",
         "//game/battle:battle_sim",
-        "//game/engine:proc",
-        "//game/engine:rng",
         "//game/item:item",
         "//game/map:map",
         "//game/map:trap",
@@ -33,5 +35,70 @@ fe7_cc_test(
         "//runtime:dispatch",
         "//runtime:gba_ptr",
         "@abseil-cpp//absl/base:nullability",
+        "@googletest//:gtest",
+    ],
+)
+
+fe7_cc_test(
+    name = "combat_skirmish_test",
+    srcs = ["combat_skirmish_test.cc"],
+    deps = [
+        ":skirmish_fixture",
+        "//game:battle_hdr",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/ai:ai",
+        "//game/battle:battle",
+        "//game/battle:battle_exp",
+        "//game/battle:battle_sim",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:map",
+        "//game/phase:phase",
+        "//game/support:support",
+        "//game/unit:unit",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_cc_test(
+    name = "tactical_systems_test",
+    srcs = ["tactical_systems_test.cc"],
+    deps = [
+        ":skirmish_fixture",
+        "//game:item_hdr",
+        "//game:proc_hdr",
+        "//game:unit_hdr",
+        "//game/action:action",
+        "//game/ai:ai",
+        "//game/ai:ai_combat",
+        "//game/ai:ai_decide",
+        "//game/engine:proc",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/map:trap",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:gba_ptr",
+    ],
+)
+
+fe7_cc_test(
+    name = "ai_turn_test",
+    srcs = ["ai_turn_test.cc"],
+    deps = [
+        ":skirmish_fixture",
+        "//game:item_hdr",
+        "//game:proc_hdr",
+        "//game:unit_hdr",
+        "//game/ai:ai",
+        "//game/ai:ai_actions",
+        "//game/ai:ai_cp",
+        "//game/ai:ai_decide",
+        "//game/ai:ai_script",
+        "//game/engine:proc",
+        "//game/engine:rng",
+        "//game/phase:phase",
+        "//runtime:gba_ptr",
     ],
 )

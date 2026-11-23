@@ -79,5 +79,42 @@ class CheckAgentRulesTest(unittest.TestCase):
         )
 
 
+  def _write_e2e_file(self, name: str, content: str) -> pathlib.Path:
+    e2e_dir = self.tmpdir / "testing" / "e2e"
+    e2e_dir.mkdir(parents=True, exist_ok=True)
+    path = e2e_dir / name
+    path.write_text(content, encoding="utf-8")
+    return path
+
+  def test_allows_hex_outside_e2e_test_bodies_and_in_fixtures(self):
+    fixture = self._write_e2e_file(
+        "skirmish_fixture.cc",
+        "constexpr uint32_t kAddr = 0x02010000u;\n",
+    )
+    self.assertEqual(check_agent_rules.check_file(fixture), [])
+
+    clean_test = self._write_e2e_file(
+        "combat_test.cc",
+        "constexpr int kSeed = 0x1234;\n"
+        "TEST_F(SkirmishIntegrationTest, CleanScenario) {\n"
+        "  // Comment mentioning 0xFF is fine.\n"
+        "  RandInit(kSeed);\n"
+        "}\n",
+    )
+    self.assertEqual(check_agent_rules.check_file(clean_test), [])
+
+  def test_rejects_direct_hex_inside_e2e_test_body(self):
+    bad_test = self._write_e2e_file(
+        "ai_turn_test.cc",
+        "TEST_F(SkirmishIntegrationTest,\n"
+        "       MultilineHeaderScenario) {\n"
+        "  auto u = GetUnit(0x81);\n"
+        "}\n",
+    )
+    errors = check_agent_rules.check_file(bad_test)
+    self.assertEqual(len(errors), 1)
+    self.assertIn("Direct hexadecimal literal in E2E test body", errors[0])
+
+
 if __name__ == "__main__":
   unittest.main()
