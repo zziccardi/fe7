@@ -18,6 +18,8 @@ FORBIDDEN_GAME_PATTERNS = [
 ]
 
 HARDCODED_DIM_RE = re.compile(r"(?<![A-Za-z0-9_])(240|160)(?![A-Za-z0-9_])")
+TEST_MACRO_RE = re.compile(r"^\s*TEST(?:_F|_P)?\s*\(")
+HEX_LITERAL_RE = re.compile(r"\b0[xX][0-9a-fA-F]+\b")
 
 
 def strip_comments(line: str) -> str:
@@ -31,8 +33,55 @@ def is_game_path(path: pathlib.Path) -> bool:
   return "game" in path.parts
 
 
+def is_e2e_test_path(path: pathlib.Path) -> bool:
+  parts = path.parts
+  for i in range(len(parts) - 1):
+    if parts[i] == "testing" and parts[i + 1] == "e2e":
+      return path.name.endswith("_test.cc")
+  return False
+
+
+def check_e2e_test_file(path: pathlib.Path) -> list[str]:
+  errors: list[str] = []
+  text = path.read_text(encoding="utf-8")
+  pending_test = False
+  in_test = False
+  brace_depth = 0
+  for lineno, raw_line in enumerate(text.splitlines(), start=1):
+    line = strip_comments(raw_line)
+    if not line.strip():
+      continue
+    if not in_test and TEST_MACRO_RE.search(line):
+      pending_test = True
+    if pending_test:
+      if "{" in line:
+        in_test = True
+        pending_test = False
+        brace_depth = line.count("{") - line.count("}")
+        if HEX_LITERAL_RE.search(line):
+          errors.append(
+              f"{path}:{lineno}: Direct hexadecimal literal in E2E test body; "
+              "introduce a named constant or test-only helper"
+          )
+        if brace_depth <= 0:
+          in_test = False
+      continue
+    if in_test:
+      if HEX_LITERAL_RE.search(line):
+        errors.append(
+            f"{path}:{lineno}: Direct hexadecimal literal in E2E test body; "
+            "introduce a named constant or test-only helper"
+        )
+      brace_depth += line.count("{") - line.count("}")
+      if brace_depth <= 0:
+        in_test = False
+  return errors
+
+
 def check_file(path: pathlib.Path) -> list[str]:
   errors: list[str] = []
+  if is_e2e_test_path(path):
+    return check_e2e_test_file(path)
   if not is_game_path(path):
     return errors
   text = path.read_text(encoding="utf-8")
@@ -51,7 +100,10 @@ def check_file(path: pathlib.Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-  roots = [pathlib.Path(a) for a in argv[1:]] or [pathlib.Path("game")]
+  roots = [pathlib.Path(a) for a in argv[1:]] or [
+      pathlib.Path("game"),
+      pathlib.Path("testing/e2e"),
+  ]
   all_errors: list[str] = []
   for root in roots:
     if not root.exists():

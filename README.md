@@ -23,7 +23,7 @@ This project uses an incremental **Ship-of-Theseus** replacement strategy (see [
 ## Current Progress
 
 - **Phase 1 (Complete):** Bazel Bzlmod + Clang C++20 build, `GbaPtr<T>`, `DispatchTable`, SHA-1 ROM loader, `libmgba` HAL, SDL3 interactive frontend (`//runtime:fe7_native`), headless runner (`//runtime:fe7_headless`), CI, and coding-rule/format linters.
-- **Phase 2 (Complete):** Trace recorder (`runtime/trace_recorder.{h,cc}`), differential harness (`runtime/diff_harness.{h,cc}`, `//runtime:fe7_diff`), FE8U/FE6J cross-matcher (`tools/match_fe8.py`), PyGhidra setup (`tools/ghidra_mcp/setup_ghidra.py`), `tools/verify_fn.py`, and two-tier E2E testing (`//testing/e2e:skirmish_integration_test` + `runtime/input_script.{h,cc}` + `tools/e2e_lockstep.py`).
+- **Phase 2 (Complete):** Trace recorder (`runtime/trace_recorder.{h,cc}`), differential harness (`runtime/diff_harness.{h,cc}`, `//runtime:fe7_diff`), FE8U/FE6J cross-matcher (`tools/match_fe8.py`), PyGhidra setup (`tools/ghidra_mcp/setup_ghidra.py`), `tools/verify_fn.py`, and two-tier E2E testing (`//testing/e2e/...` + `runtime/input_script.{h,cc}` + `tools/e2e_lockstep.py`).
 - **Phase 3 (In Progress — 555 / 6,568 ROM functions differentially verified, 0 mismatches — *Tactical Gameplay & Enemy AI Complete*):**
   - Canonical headers: `game/proc.h`, `game/unit.h`, `game/item.h`, `game/battle.h`, central registration in `game/register_all.{h,cc}`.
   - **Wave 1 (`game/engine/`):** RNG (`rng`, 10), Game Clock (`clock`, 4), and 6C Proc Scheduler (`proc`, 23 + 26-opcode bytecode interpreter) — **37 functions**.
