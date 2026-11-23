@@ -563,32 +563,6 @@ void SkirmishIntegrationTest::WriteAiScriptCmd(uint32_t rom_addr,
   WriteRom(rom_addr, cmd);
 }
 
-void SkirmishIntegrationTest::RegisterEnemyAiTurnShims() {
-  // Minimal stubs for the 4 un-decompiled battle-init leaf helpers called by
-  // native `BattleGenerateSimulation` (`SetBattleUnitTerrainBonusesAuto`,
-  // `DisableAllLightRunes`, `ApplyLightRuneTerrainAlt`, `SetBattleUnitWeapon`).
-  RegisterNative(kAddrSetBattleUnitTerrainBonusesAuto, StubNoOpZero);
-  RegisterNative(kAddrDisableAllLightRunes, StubNoOpZero);
-  RegisterNative(kAddrApplyLightRuneTerrainAlt, StubNoOpZero);
-  RegisterNative(kAddrSetBattleUnitWeapon,
-                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
-                    const uint32_t* absl_nullable) -> uint32_t {
-                   GbaPtr<BattleUnit> bu(r0);
-                   const int slot = static_cast<int32_t>(r1);
-                   const uint16_t item = (slot >= 0 && slot < 5)
-                                             ? bu->unit.items[slot]
-                                             : bu->unit.items[0];
-                   bu->weapon = item;
-                   bu->weapon_before = item;
-                   bu->weapon_attributes = GetItemAttributes(item);
-                   bu->weapon_type = static_cast<uint8_t>(GetItemKind(item));
-                   bu->weapon_slot_index = (slot >= 0 && slot < 5)
-                                               ? static_cast<uint8_t>(slot)
-                                               : 0u;
-                   return 0u;
-                 });
-}
-
 void SkirmishIntegrationTest::InitEnemyAiTurnRomTables() {
   // 3-stage `CpDecide` pipeline: Suspend/Recover -> Script A -> Script B -> 0.
   WriteRom<uint32_t>(kAiDecideFuncsAddr + 0u,

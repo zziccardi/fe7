@@ -342,13 +342,13 @@ static_assert(std::is_trivially_copyable_v<Unit>);
 #endif  // FE7_GAME_UNIT_H_
 ```
 
-#### `game/` (Decompilation Waves — 555 / 6,568 ROM functions verified — *Tactical Gameplay & Enemy AI Complete*)
+#### `game/` (Decompilation Waves — 560 / 6,568 ROM functions verified — *Tactical Gameplay & Enemy AI Complete*)
 
 | Wave | Directory | Scope | Status & Strategy |
 | :--- | :--- | :--- | :--- |
 | **Wave 1** | `game/engine/` | `rng` (10), `clock` (4), `proc` (23 + 26-opcode interpreter), plus `hardware`, `dma`, `oam`, `bg`, `irq`, `main` (~10%) | **In Progress** (`rng`, `clock`, `proc` complete & verified; remaining: low-level `hardware`/`dma`/`oam`/`bg`/`irq`/`main`). |
-| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & math (`unit` 29, `item` 45, `battle` 20, `map` 18, `map_range` 13, `save`, ~25%) | **Mostly Complete** (`unit`, `item`, `battle`, `map`, `map_range` complete & verified; remaining: `game/save/`). |
-| **Wave 3** | `game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/` | Tactical gameplay & complete Enemy AI engine: `battle_sim` (22), `battle_gen` (9), `battle_exp` (26), `phase` + events/flags (31), `support` (22), `trap` traps/obstacles/light runes/fog/entity maps (27), `ballista` (8), `action` unit actions/rescue/drop/give/autolevel/stat boosters (26), and complete **Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28, `ai_staff_loot` 33 — 230 AI functions) | **Milestone Complete** (all tactical gameplay, leaf helpers & complete Enemy AI modules + pure-native multi-turn E2E skirmishes verified across 34 ASan test suites, 563 registered native functions, and 555/555 `fe7_diff` functions). |
+| **Wave 2** | `game/unit/`, `game/item/`, `game/map/`, `game/battle/`, `game/save/` | Core gameplay data & math (`unit` 29, `item` 45, `battle` 20, `map` 19, `map_range` 13, `save`, ~25%) | **Mostly Complete** (`unit`, `item`, `battle`, `map`, `map_range` complete & verified; remaining: `game/save/`). |
+| **Wave 3** | `game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/` | Tactical gameplay & complete Enemy AI engine: `battle_sim` (22), `battle_gen` (12), `battle_exp` (26), `phase` + events/flags (31), `support` (22), `trap` traps/obstacles/light runes/fog/entity maps (28), `ballista` (8), `action` unit actions/rescue/drop/give/autolevel/stat boosters (26), and complete **Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28, `ai_staff_loot` 33 — 230 AI functions) | **Milestone Complete** (all tactical gameplay, battle-init leaf helpers & complete Enemy AI modules + pure-native multi-turn E2E skirmishes verified across 34 ASan test suites, 568 registered native functions, and 560/560 `fe7_diff` functions — zero tactical/battle shims remain). |
 | **Wave 4** | `game/audio/`, `game/save/` | `m4a` C driver + clean C++ `SoundMainRAM` mixer, `libc`/BIOS wrappers, save/suspend (`~10%`) | Planned next (`libmgba` APU runs `m4a` cleanly in fallback during Waves 1–3). |
 | **Wave 5** | `game/ui/` | `talk`, `face`, `font`, menus, prep screen, shop, arena, world map, event interpreter, Lyn tutorials, Link Arena UI (~20%) | Use `kViewportWidth`/`kViewportHeight` and `hal::TextHookDrawGlyph` seams; stub low-level SIO via `hal::link`. |
 | **Wave 6** | `game/banim/` | `ekrbattle`, `efx`, spell scripts, Quintessence, Fire Dragon, CGs, sound room, credits (~20%) | Highly parallelizable state-machine procs across agent PR batches. |
@@ -385,7 +385,7 @@ static_assert(std::is_trivially_copyable_v<Unit>);
      --traces=/tmp/wave.fe7t \
      --fuzz_iters=256
    ```
-   Asserts 100% exact `r0` return values (for non-void functions) and byte-identical EWRAM + static IWRAM (`0x03000000..0x030077FF`) vs. original Thumb in `libmgba` (**555/555** functions passing).
+   Asserts 100% exact `r0` return values (for non-void functions) and byte-identical EWRAM + static IWRAM (`0x03000000..0x030077FF`) vs. original Thumb in `libmgba` (**560/560** functions passing).
 
 3. **Headless Lockstep & Fallback Profiling (`tools/e2e_lockstep.py`):**
    ```bash

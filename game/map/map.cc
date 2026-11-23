@@ -425,11 +425,24 @@ void MapSetInRange(int x, int y, int min_range, int max_range) {
   MapAddInRange(x, y, min_range - 1, -1);
 }
 
+uint8_t GetBaseTerrainAt(int x, int y) {
+  const GbaPtr<const GbaPtr<const uint16_t>> raw_rows(kMapRawTilesAddr);
+  const uint16_t tile = raw_rows[y][x];
+  const GbaPtr<const uint8_t> metatile_terrain(kMapMetatileTerrainAddr);
+  return metatile_terrain[tile >> 2];
+}
+
 void RegisterMapFunctions() {
   RegisterNative(kAddrGetUnitMovementCost,
                  [](uint32_t r0, uint32_t, uint32_t, uint32_t,
                     const uint32_t* absl_nullable) -> uint32_t {
                    return GetUnitMovementCost(GbaPtr<const Unit>(r0)).addr;
+                 });
+  RegisterNative(kAddrGetBaseTerrainAt,
+                 [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   return GetBaseTerrainAt(static_cast<int32_t>(r0),
+                                           static_cast<int32_t>(r1));
                  });
   RegisterNative(kAddrMapFloodCoreRam, &ThunkMapFloodCoreRam);
   RegisterNative(kAddrMapInit, &ThunkMapInit);

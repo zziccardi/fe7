@@ -8,6 +8,8 @@
 #include "game/battle/battle_exp.h"
 #include "game/battle/battle_sim.h"
 #include "game/item/item.h"
+#include "game/map/ballista.h"
+#include "game/map/map.h"
 #include "game/map/trap.h"
 #include "game/unit.h"
 #include "runtime/dispatch.h"
@@ -17,6 +19,7 @@ namespace fe7 {
 
 namespace {
 
+inline constexpr uint32_t kArenaDataAddr = 0x0203A7F4u;
 inline constexpr uint32_t kBattleActionDataAddr = 0x0203A85Cu;
 
 inline int AbsDiff(int a, int b) { return (a >= b) ? (a - b) : (b - a); }
@@ -42,19 +45,18 @@ void BattleGenerateSimulationInternal(GbaPtr<Unit> actor, GbaPtr<Unit> target,
                            AbsDiff(bu_actor->unit.y, bu_target->unit.y));
 
   if ((stats->config & kBattleConfigBallista) != 0u) {
-    GbaCall(kAddrSetBattleUnitWeaponBallista, bu_actor.addr);
+    SetBattleUnitWeaponBallista(bu_actor);
   } else {
-    GbaCall(kAddrSetBattleUnitWeapon, bu_actor.addr,
-            static_cast<uint32_t>(item_slot));
+    SetBattleUnitWeapon(bu_actor, item_slot);
   }
-  GbaCall(kAddrSetBattleUnitWeapon, bu_target.addr, 0xFFFFFFFFu);
+  SetBattleUnitWeapon(bu_target, -1);
 
   BattleInitTargetCanCounter();
   BattleApplyWeaponTriangleEffect(bu_actor, bu_target);
-  GbaCall(kAddrDisableAllLightRunes);
+  DisableAllLightRunes();
 
-  GbaCall(kAddrSetBattleUnitTerrainBonusesAuto, bu_actor.addr);
-  GbaCall(kAddrSetBattleUnitTerrainBonusesAuto, bu_target.addr);
+  SetBattleUnitTerrainBonusesAuto(bu_actor);
+  SetBattleUnitTerrainBonusesAuto(bu_target);
 
   BattleGenerate(actor, target);
   ApplyLightRuneTerrainAlt();
@@ -76,18 +78,18 @@ void BattleGenerateRealInternal(GbaPtr<Unit> actor, GbaPtr<Unit> target) {
                            AbsDiff(bu_actor->unit.y, bu_target->unit.y));
 
   if ((stats->config & kBattleConfigBallista) != 0u) {
-    GbaCall(kAddrSetBattleUnitWeaponBallista, bu_actor.addr);
+    SetBattleUnitWeaponBallista(bu_actor);
   } else {
-    GbaCall(kAddrSetBattleUnitWeapon, bu_actor.addr, 0xFFFFFFFFu);
+    SetBattleUnitWeapon(bu_actor, -1);
   }
-  GbaCall(kAddrSetBattleUnitWeapon, bu_target.addr, 0xFFFFFFFFu);
+  SetBattleUnitWeapon(bu_target, -1);
 
   BattleInitTargetCanCounter();
   BattleApplyWeaponTriangleEffect(bu_actor, bu_target);
-  GbaCall(kAddrDisableAllLightRunes);
+  DisableAllLightRunes();
 
-  GbaCall(kAddrSetBattleUnitTerrainBonusesAuto, bu_actor.addr);
-  GbaCall(kAddrSetBattleUnitTerrainBonusesAuto, bu_target.addr);
+  SetBattleUnitTerrainBonusesAuto(bu_actor);
+  SetBattleUnitTerrainBonusesAuto(bu_target);
 
   BattleGenerate(actor, target);
   ApplyLightRuneTerrainAlt();
@@ -211,9 +213,8 @@ void BattleGenerateDisplayStats(GbaPtr<Unit> unit, int8_t item_slot) {
     InitBattleUnit(bu_actor, GbaPtr<const Unit>(unit.addr));
   }
 
-  GbaCall(kAddrSetBattleUnitTerrainBonusesAuto, bu_actor.addr);
-  GbaCall(kAddrSetBattleUnitWeapon, bu_actor.addr,
-          static_cast<uint32_t>(static_cast<int32_t>(item_slot)));
+  SetBattleUnitTerrainBonusesAuto(bu_actor);
+  SetBattleUnitWeapon(bu_actor, static_cast<int>(item_slot));
   ComputeBattleUnitStats(bu_actor, bu_target);
 
   if (GetItemIid(bu_actor->weapon) == 0x11) {
@@ -233,6 +234,124 @@ void BattleGenerateDisplayStats(GbaPtr<Unit> unit, int8_t item_slot) {
   if (GetItemWeaponEffect(bu_actor->weapon) == 3) {
     bu_actor->battle_attack = 0xFF;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 0x08028728: SetBattleUnitTerrainBonusesAuto
+// ---------------------------------------------------------------------------
+void SetBattleUnitTerrainBonusesAuto(GbaPtr<BattleUnit> bu) {
+  const GbaPtr<const GbaPtr<const uint8_t>> terrain_map =
+      *GbaPtr<const GbaPtr<const GbaPtr<const uint8_t>>>(kMapTerrainAddr);
+  const uint8_t terrain = terrain_map[bu->unit.y][bu->unit.x];
+  bu->terrain_id = terrain;
+  bu->terrain_avoid =
+      static_cast<int8_t>(bu->unit.jinfo->avo_terrain_table[terrain]);
+  bu->terrain_defense =
+      static_cast<int8_t>(bu->unit.jinfo->def_terrain_table[terrain]);
+  bu->terrain_resistance =
+      static_cast<int8_t>(bu->unit.jinfo->res_terrain_table[terrain]);
+}
+
+// ---------------------------------------------------------------------------
+// 0x0802877C: SetBattleUnitWeapon
+// ---------------------------------------------------------------------------
+void SetBattleUnitWeapon(GbaPtr<BattleUnit> bu, int item_slot) {
+  if (item_slot == -1) {
+    item_slot = GetUnitEquippedWeaponSlot(GbaPtr<const Unit>(bu.addr));
+  }
+
+  if ((bu->unit.flags & kUnitFlagInBallista) != 0u &&
+      GetBallistaItemAtPos(bu->unit.x, bu->unit.y) != 0) {
+    item_slot = 8;
+  }
+
+  bu->can_counter = 1;
+
+  switch (static_cast<uint32_t>(item_slot)) {
+    case 0u:
+    case 1u:
+    case 2u:
+    case 3u:
+    case 4u:
+      bu->weapon_slot_index = static_cast<uint8_t>(item_slot);
+      bu->weapon = bu->unit.items[item_slot];
+      break;
+    case 5u:
+      bu->weapon_slot_index = 0xFFu;
+      bu->weapon = *GbaPtr<const uint16_t>(kBmStatusAddr + 0x2Cu);
+      break;
+    case 6u:
+      bu->weapon_slot_index = 0u;
+      bu->weapon = *GbaPtr<const uint16_t>(kArenaDataAddr + 0x1Au);
+      bu->can_counter = 0;
+      break;
+    case 7u:
+      bu->weapon_slot_index = 0u;
+      bu->weapon = *GbaPtr<const uint16_t>(kArenaDataAddr + 0x1Cu);
+      bu->can_counter = 0;
+      break;
+    case 8u:
+      bu->weapon_slot_index = 0xFFu;
+      bu->weapon =
+          static_cast<uint16_t>(GetBallistaItemAtPos(bu->unit.x, bu->unit.y));
+      bu->can_counter = 0;
+      break;
+    default:
+      bu->weapon_slot_index = 0xFFu;
+      bu->weapon = 0u;
+      bu->can_counter = 0;
+      break;
+  }
+
+  bu->weapon_before = bu->weapon;
+  bu->weapon_attributes = GetItemAttributes(bu->weapon);
+  bu->weapon_type = static_cast<uint8_t>(GetItemKind(bu->weapon));
+
+  const GbaPtr<const BattleStats> stats(kBattleStatsAddr);
+  if ((stats->config & kBattleConfigBit2) == 0u) {
+    if ((bu->weapon_attributes & 0x40u) != 0u) {
+      const int iid = GetItemIid(bu->weapon);
+      if (iid == 0x11) {
+        bu->weapon_type = 7u;
+      } else if (iid == 0x10) {
+        if (stats->range == 2u) {
+          bu->weapon_type = 6u;
+        } else {
+          bu->weapon_attributes &= ~0x40u;
+        }
+      } else if (iid == 0x99) {
+        if (stats->range == 2u) {
+          bu->weapon_type = 5u;
+        } else {
+          bu->weapon_attributes &= ~0x40u;
+        }
+      }
+    }
+
+    if (!CanItemReachDistance(bu->weapon, stats->range) ||
+        bu->weapon_slot_index == 0xFFu) {
+      bu->weapon = 0u;
+      bu->can_counter = 0;
+    }
+
+    if (bu->unit.status == static_cast<uint8_t>(UnitStatus::kSleep)) {
+      bu->weapon = 0u;
+      bu->can_counter = 0;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 0x0802896C: SetBattleUnitWeaponBallista
+// ---------------------------------------------------------------------------
+void SetBattleUnitWeaponBallista(GbaPtr<BattleUnit> bu) {
+  const uint16_t item =
+      static_cast<uint16_t>(GetBallistaItemAtPos(bu->unit.x, bu->unit.y));
+  bu->weapon = item;
+  bu->weapon_before = item;
+  bu->weapon_attributes = GetItemAttributes(item);
+  bu->weapon_type = static_cast<uint8_t>(GetItemKind(item));
+  bu->can_counter = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +417,23 @@ uint32_t ThunkBattleGenerateDisplayStats(uint32_t r0, uint32_t r1, uint32_t,
   BattleGenerateDisplayStats(GbaPtr<Unit>(r0), static_cast<int8_t>(r1));
   return 0u;
 }
+uint32_t ThunkSetBattleUnitTerrainBonusesAuto(uint32_t r0, uint32_t, uint32_t,
+                                              uint32_t,
+                                              const uint32_t* absl_nullable) {
+  SetBattleUnitTerrainBonusesAuto(GbaPtr<BattleUnit>(r0));
+  return 0u;
+}
+uint32_t ThunkSetBattleUnitWeapon(uint32_t r0, uint32_t r1, uint32_t, uint32_t,
+                                  const uint32_t* absl_nullable) {
+  SetBattleUnitWeapon(GbaPtr<BattleUnit>(r0), static_cast<int32_t>(r1));
+  return 0u;
+}
+uint32_t ThunkSetBattleUnitWeaponBallista(uint32_t r0, uint32_t, uint32_t,
+                                          uint32_t,
+                                          const uint32_t* absl_nullable) {
+  SetBattleUnitWeaponBallista(GbaPtr<BattleUnit>(r0));
+  return 0u;
+}
 
 }  // namespace
 
@@ -317,6 +453,11 @@ void RegisterBattleGenFunctions() {
   RegisterNative(kAddrBattleGenerate, &ThunkBattleGenerate);
   RegisterNative(kAddrBattleGenerateDisplayStats,
                  &ThunkBattleGenerateDisplayStats);
+  RegisterNative(kAddrSetBattleUnitTerrainBonusesAuto,
+                 &ThunkSetBattleUnitTerrainBonusesAuto);
+  RegisterNative(kAddrSetBattleUnitWeapon, &ThunkSetBattleUnitWeapon);
+  RegisterNative(kAddrSetBattleUnitWeaponBallista,
+                 &ThunkSetBattleUnitWeaponBallista);
 }
 
 }  // namespace fe7

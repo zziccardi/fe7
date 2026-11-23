@@ -254,7 +254,6 @@ TEST_F(SkirmishIntegrationTest, BallistaMountCombatAmmoAndDismount) {
 
 TEST_F(SkirmishIntegrationTest, ChokepointPathfindingAndZoneOfControlBlocking) {
   RandInit(kRngSeedChokepoint);
-  RegisterEnemyAiTurnShims();
   InitEnemyAiTurnRomTables();
 
   // Vertical wall at x=3 with a single 1-tile chokepoint at (3, 3):

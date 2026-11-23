@@ -319,6 +319,15 @@ GbaPtr<Trap> AddLightRune(int x, int y) {
   return trap;
 }
 
+void DisableAllLightRunes() {
+  for (GbaPtr<Trap> trap(kTrapArrayAddr); trap->type != 0u; trap = trap + 1) {
+    if (trap->type == static_cast<uint8_t>(TrapType::kLightRune)) {
+      const uint8_t base_terrain = GetBaseTerrainAt(trap->x, trap->y);
+      MapTerrainPtr()[trap->y][trap->x] = base_terrain;
+    }
+  }
+}
+
 void ApplyLightRuneTerrainAlt() { ApplyLightRuneTerrain(); }
 
 void RegisterTrapFunctions() {
@@ -500,6 +509,12 @@ void RegisterTrapFunctions() {
                    return AddLightRune(static_cast<int32_t>(r0),
                                        static_cast<int32_t>(r1))
                        .addr;
+                 });
+  RegisterNative(kAddrDisableAllLightRunes,
+                 [](uint32_t, uint32_t, uint32_t, uint32_t,
+                    const uint32_t* absl_nullable) -> uint32_t {
+                   DisableAllLightRunes();
+                   return 0u;
                  });
   RegisterNative(kAddrApplyLightRuneTerrainAlt,
                  [](uint32_t, uint32_t, uint32_t, uint32_t,
