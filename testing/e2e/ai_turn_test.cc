@@ -27,7 +27,6 @@ namespace {
 
 TEST_F(SkirmishIntegrationTest, FullEnemyAiTurnDecisionAndExecution) {
   RandInit(kRngSeedEnemyAiTurn);
-  RegisterEnemyAiTurnShims();
   InitEnemyAiTurnRomTables();
 
   GbaPtr<Unit> lyn = Lyn();
@@ -140,7 +139,6 @@ TEST_F(SkirmishIntegrationTest, ProcLoopDrivenPhaseAndAiExecution) {
 
 TEST_F(SkirmishIntegrationTest, ThreeFactionBlueGreenRedSkirmish) {
   RandInit(kRngSeedThreeFaction);
-  RegisterEnemyAiTurnShims();
   InitEnemyAiTurnRomTables();
   RegisterChar({.id = kPidGreenAlly, .default_jid = kJidCavalier});
 
@@ -200,7 +198,6 @@ TEST_F(SkirmishIntegrationTest, ThreeFactionBlueGreenRedSkirmish) {
 
 TEST_F(SkirmishIntegrationTest, ThiefAiStealChestLootAndAntitoxin) {
   RandInit(kRngSeedThiefLoot);
-  RegisterEnemyAiTurnShims();
   InitEnemyAiTurnRomTables();
   InitThiefLootRomTables();
 
@@ -264,7 +261,6 @@ TEST_F(SkirmishIntegrationTest, ThiefAiStealChestLootAndAntitoxin) {
 
 TEST_F(SkirmishIntegrationTest, MultiUnitSequentialEnemyPhase) {
   RandInit(kRngSeedMultiUnitAi);
-  RegisterEnemyAiTurnShims();
   InitEnemyAiTurnRomTables();
   RegisterChar({.id = kPidBrigandC, .default_jid = kJidBrigand});
 

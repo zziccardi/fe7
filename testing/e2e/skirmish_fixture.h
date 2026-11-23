@@ -359,7 +359,6 @@ class SkirmishIntegrationTest : public ::testing::Test {
   void RegisterChar(const CharSpec& spec);
   void WriteSupportPartner(uint32_t rom_addr, const SupportPartnerSpec& spec);
   void WriteAiScriptCmd(uint32_t rom_addr, const AiScriptCmdSpec& spec);
-  void RegisterEnemyAiTurnShims();
   void InitEnemyAiTurnRomTables();
   void InitThiefLootRomTables();
 

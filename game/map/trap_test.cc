@@ -142,5 +142,35 @@ TEST_F(TrapTest, RefreshEntityMapsHandlesFogTorchlightAndMines) {
   EXPECT_NE(hid[4][4] & 2u, 0u);  // Mine marked on hidden map.
 }
 
+TEST_F(TrapTest, DisableAllLightRunesRestoresBaseTerrain) {
+  InitTraps();
+  GbaPtr<GbaPtr<uint8_t>> terrain =
+      *GbaPtr<GbaPtr<GbaPtr<uint8_t>>>(kMapTerrainAddr);
+
+  // Wire row pointers in gMapRawTiles for an 8x8 tile grid.
+  constexpr uint32_t kRawTileBuf = 0x0201C000u;
+  GbaPtr<GbaPtr<uint16_t>> raw_rows(kMapRawTilesAddr);
+  for (int y = 0; y < 8; ++y) {
+    raw_rows[y] =
+        GbaPtr<uint16_t>(kRawTileBuf + static_cast<uint32_t>(y) * 16u);
+  }
+  // Metatile index 5 (raw tile value 5 << 2 = 20) maps to terrain ID 12.
+  GbaPtr<uint8_t> metatile_terrain(kMapMetatileTerrainAddr);
+  metatile_terrain[5] = 12u;
+  raw_rows[3][4] = 20u;
+  terrain[3][4] = 12u;
+
+  EXPECT_EQ(GetBaseTerrainAt(4, 3), 12u);
+
+  AddLightRune(4, 3);
+  EXPECT_EQ(terrain[3][4], 0u);
+
+  DisableAllLightRunes();
+  EXPECT_EQ(terrain[3][4], 12u);
+
+  ApplyLightRuneTerrainAlt();
+  EXPECT_EQ(terrain[3][4], 0u);
+}
+
 }  // namespace
 }  // namespace fe7

@@ -587,6 +587,9 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
     {"ResetExpiredDamagingTraps", fe7::kAddrResetExpiredDamagingTraps, false,
      FuzzMode::kTrapState},
     {"AddLightRune", fe7::kAddrAddLightRune, true, FuzzMode::kTrapState},
+    {"GetBaseTerrainAt", fe7::kAddrGetBaseTerrainAt, true, FuzzMode::kMapState},
+    {"DisableAllLightRunes", fe7::kAddrDisableAllLightRunes, false,
+     FuzzMode::kTrapState},
     {"ApplyLightRuneTerrainAlt", fe7::kAddrApplyLightRuneTerrainAlt, false,
      FuzzMode::kTrapState},
     // Tactical Layer 2: Unit Actions, Rescue/Drop, Autolevel & Boosters (26).
@@ -1015,6 +1018,13 @@ constexpr VerifiedEntry kVerifiedFunctions[] = {
      FuzzMode::kBattleGenState},
     {"BattleGenerateDisplayStats", fe7::kAddrBattleGenerateDisplayStats, false,
      FuzzMode::kBattleGenState},
+    {"SetBattleUnitTerrainBonusesAuto",
+     fe7::kAddrSetBattleUnitTerrainBonusesAuto, false,
+     FuzzMode::kBattleGenState},
+    {"SetBattleUnitWeapon", fe7::kAddrSetBattleUnitWeapon, false,
+     FuzzMode::kBattleGenState},
+    {"SetBattleUnitWeaponBallista", fe7::kAddrSetBattleUnitWeaponBallista,
+     false, FuzzMode::kBattleGenState},
     // Group 3: Map range-overlay, move-script & danger-zone helpers (13).
     {"BuildBestMoveScript", fe7::kAddrBuildBestMoveScript, false,
      FuzzMode::kMapRangeState},
@@ -1545,6 +1555,33 @@ std::vector<fe7::TraceRecord> MakeMapTraces(uint32_t gba_addr, size_t count) {
         rec.regs[1] = static_cast<uint32_t>(uy);
         rec.regs[2] = min_r;
         rec.regs[3] = max_r;
+        break;
+      }
+      case fe7::kAddrGetBaseTerrainAt: {
+        constexpr uint32_t kRawTileBufOff = 0x16000u;
+        const uint32_t row_ptrs_off = fe7::kMapRawTilesAddr - 0x02000000u;
+        const uint32_t meta_off = fe7::kMapMetatileTerrainAddr - 0x02000000u;
+        for (int y = 0; y < height; ++y) {
+          const uint32_t row_addr =
+              0x02000000u + kRawTileBufOff +
+              static_cast<uint32_t>(y) * static_cast<uint32_t>(width) * 2u;
+          std::memcpy(
+              rec.ewram.data() + row_ptrs_off + static_cast<uint32_t>(y) * 4u,
+              &row_addr, sizeof(row_addr));
+          for (int x = 0; x < width; ++x) {
+            const uint16_t raw_tile =
+                static_cast<uint16_t>((NextXorshift(rng) % 64u) << 2);
+            std::memcpy(rec.ewram.data() + (row_addr - 0x02000000u) +
+                            static_cast<uint32_t>(x) * 2u,
+                        &raw_tile, sizeof(raw_tile));
+          }
+        }
+        for (uint32_t m = 0; m < 64u; ++m) {
+          rec.ewram[meta_off + m] =
+              static_cast<uint8_t>(1u + (NextXorshift(rng) % 30u));
+        }
+        rec.regs[0] = static_cast<uint32_t>(ux);
+        rec.regs[1] = static_cast<uint32_t>(uy);
         break;
       }
       default:
@@ -2393,6 +2430,29 @@ std::vector<fe7::TraceRecord> MakeTrapTraces(uint32_t gba_addr, size_t count) {
         if (r == 2u) tid = 0x22u;
         rec.ewram[terrain_tiles + toff] = tid;
       }
+    }
+
+    // Seed gMapRawTiles and gMapMetatileTerrain for DisableAllLightRunes.
+    constexpr uint32_t kRawTileBufOff = 0x14000u;
+    const uint32_t row_ptrs_off = fe7::kMapRawTilesAddr - 0x02000000u;
+    const uint32_t meta_off = fe7::kMapMetatileTerrainAddr - 0x02000000u;
+    for (int y = 0; y < kH; ++y) {
+      const uint32_t row_addr =
+          0x02000000u + kRawTileBufOff + static_cast<uint32_t>(y) * kW * 2u;
+      std::memcpy(
+          rec.ewram.data() + row_ptrs_off + static_cast<uint32_t>(y) * 4u,
+          &row_addr, sizeof(row_addr));
+      for (int x = 0; x < kW; ++x) {
+        const uint16_t raw_tile =
+            static_cast<uint16_t>((NextXorshift(rng) % 16u) << 2);
+        std::memcpy(rec.ewram.data() + (row_addr - 0x02000000u) +
+                        static_cast<uint32_t>(x) * 2u,
+                    &raw_tile, sizeof(raw_tile));
+      }
+    }
+    for (uint32_t m = 0; m < 16u; ++m) {
+      rec.ewram[meta_off + m] =
+          static_cast<uint8_t>(1u + (NextXorshift(rng) % 20u));
     }
 
     // Populate Blue unit 1 and Red unit 0x81 in EWRAM.
@@ -4185,6 +4245,50 @@ std::vector<fe7::TraceRecord> MakeBattleGenTraces(uint32_t gba_addr,
         rec.regs[0] = u1_addr;
         rec.regs[1] = NextXorshift(rng) % 2u;
         break;
+      case fe7::kAddrSetBattleUnitTerrainBonusesAuto:
+      case fe7::kAddrSetBattleUnitWeaponBallista:
+        rec.regs[0] = fe7::kBattleActorAddr;
+        break;
+      case fe7::kAddrSetBattleUnitWeapon: {
+        static constexpr uint16_t kTestWeapons[] = {
+            0x2E01u,  // Iron Sword (1-1)
+            0x1910u,  // Light Brand (1-2, magic sword)
+            0x0F11u,  // Runesword (1-2, magic sword)
+            0x2899u,  // Wind Sword (1-2, magic sword)
+            0x2D14u,  // Iron Lance (1-1)
+        };
+        const uint16_t w = kTestWeapons[NextXorshift(rng) % 5u];
+        bu_a.unit.items[0] = w;
+        bu_a.unit.items[1] = 0x2E01u;
+        bu_a.unit.wexp[0] = 251u;
+        bu_a.unit.wexp[1] = 251u;
+        if ((NextXorshift(rng) % 5u) == 0u) {
+          bu_a.unit.flags |= fe7::kUnitFlagInBallista;
+        }
+        if ((NextXorshift(rng) % 6u) == 0u) {
+          bu_a.unit.status = static_cast<uint8_t>(fe7::UnitStatus::kSleep);
+        }
+        std::memcpy(rec.ewram.data() + (fe7::kBattleActorAddr - 0x02000000u),
+                    &bu_a, sizeof(bu_a));
+        // Seed gBmStatus+0x2C (slot 5) and gArenaData+0x1A/0x1C (slots 6/7).
+        const uint16_t extra_w = kTestWeapons[NextXorshift(rng) % 5u];
+        std::memcpy(rec.ewram.data() + (0x0202BBB8u + 0x2Cu - 0x02000000u),
+                    &extra_w, sizeof(extra_w));
+        std::memcpy(rec.ewram.data() + (0x0203A7F4u + 0x1Au - 0x02000000u),
+                    &extra_w, sizeof(extra_w));
+        std::memcpy(rec.ewram.data() + (0x0203A7F4u + 0x1Cu - 0x02000000u),
+                    &extra_w, sizeof(extra_w));
+        bs.config = ((NextXorshift(rng) % 4u) == 0u)
+                        ? fe7::kBattleConfigBit2
+                        : fe7::kBattleConfigSimulate;
+        bs.range = static_cast<uint8_t>(1u + (NextXorshift(rng) % 3u));
+        std::memcpy(rec.ewram.data() + bs_off, &bs, sizeof(bs));
+        static constexpr int kSlots[] = {-1, 0, 1, 5, 6, 7, 8, 9};
+        rec.regs[0] = fe7::kBattleActorAddr;
+        rec.regs[1] = static_cast<uint32_t>(
+            static_cast<int32_t>(kSlots[NextXorshift(rng) % 8u]));
+        break;
+      }
       default:
         break;
     }

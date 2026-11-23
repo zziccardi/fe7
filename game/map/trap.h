@@ -86,6 +86,7 @@ inline constexpr uint32_t kAddrUnitHideIfUnderRoof = 0x0802BE14u;
 inline constexpr uint32_t kAddrTickDamagingTraps = 0x0802C158u;
 inline constexpr uint32_t kAddrResetExpiredDamagingTraps = 0x0802C17Cu;
 inline constexpr uint32_t kAddrAddLightRune = 0x0802C1E8u;
+inline constexpr uint32_t kAddrDisableAllLightRunes = 0x0802C29Cu;
 inline constexpr uint32_t kAddrApplyLightRuneTerrainAlt = 0x0802C2DCu;
 inline constexpr uint32_t kAddrGetTrap = 0x0802C318u;
 
@@ -119,9 +120,10 @@ void UnitHideIfUnderRoof(GbaPtr<Unit> unit);
 void TickDamagingTraps();
 void ResetExpiredDamagingTraps();
 GbaPtr<Trap> AddLightRune(int x, int y);
+void DisableAllLightRunes();
 void ApplyLightRuneTerrainAlt();
 
-// Registers all 27 native trap & fog/entity map functions in the dispatch
+// Registers all 28 native trap & fog/entity map functions in the dispatch
 // table.
 void RegisterTrapFunctions();
 

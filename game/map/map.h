@@ -143,12 +143,22 @@ void MapSetInRange(int x, int y, int min_range, int max_range);
 inline constexpr uint32_t kMapPlayStatusAddr = 0x0202BBF8u;
 inline constexpr uint32_t kBallistaMoveTableAddr = 0x08BE3C98u;
 
+// EWRAM metatile-to-terrain lookup table (1024 bytes) and raw-tile row pointer
+// table (referenced via ROM constants 0x08B932B0 and 0x08B932B4).
+inline constexpr uint32_t kMapMetatileTerrainAddr = 0x02032A90u;
+inline constexpr uint32_t kMapRawTilesAddr = 0x02032E90u;
+inline constexpr uint32_t kAddrGetBaseTerrainAt = 0x080193BCu;
+
+// Returns the base terrain ID for tile `(x, y)` from `gMapRawTiles` and the
+// active metatile terrain table. Matches FE7 US `func_080193BC`.
+uint8_t GetBaseTerrainAt(int x, int y);
+
 // Returns the 65-entry terrain movement cost table for `unit` accounting for
 // ballista state and active chapter weather. Matches `GetUnitMovementCost`
 // (0x080187D4).
 GbaPtr<const int8_t> GetUnitMovementCost(GbaPtr<const Unit> unit);
 
-// Registers all 18 native map & pathfinding functions in the dispatch table.
+// Registers all 19 native map & pathfinding functions in the dispatch table.
 void RegisterMapFunctions();
 
 }  // namespace fe7
