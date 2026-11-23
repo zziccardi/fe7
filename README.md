@@ -65,7 +65,7 @@ See [`docs/README.md`](docs/README.md) for the full documentation index:
 
 This repository uses a split license (see [LICENSE](LICENSE) for full details):
 
-- **Original runtime & tooling (`runtime/`, `tools/`):** Licensed under the [GNU General Public License v3.0](LICENSE-GPLv3) (GPL-3.0).
+- **Original runtime, tooling & test suites (`runtime/`, `tools/`, `testing/`):** Licensed under the [GNU General Public License v3.0](LICENSE-GPLv3) (GPL-3.0).
 - **Decompiled game logic (`game/`):** **Explicitly excluded** from GPL-3.0 (no license granted). Provided strictly for non-commercial educational, research, and preservation purposes with a legally obtained FE7 US ROM.
 - **Third-party `libmgba` patches (`third_party/mgba/`):** Remain under MPL-2.0 until fallback retirement.
 

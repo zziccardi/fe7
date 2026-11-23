@@ -4,13 +4,13 @@ fe7 Licensing & Intellectual Property Notice
 This repository uses a split licensing model that distinguishes between original
 runtime/tooling infrastructure and reverse-engineered game logic:
 
-1. Original Runtime & Tooling (`runtime/`, `tools/`)
-----------------------------------------------------
+1. Original Runtime, Tooling & Test Suites (`runtime/`, `tools/`, `testing/`)
+-----------------------------------------------------------------------------
 Copyright (c) 2026 fe7 contributors
 
-All original code under `runtime/` and `tools/` is licensed under the GNU
-General Public License v3.0 (GPL-3.0). See `LICENSE-GPLv3` for the full license
-text.
+All original code under `runtime/`, `tools/`, and `testing/` is licensed under
+the GNU General Public License v3.0 (GPL-3.0). See `LICENSE-GPLv3` for the full
+license text.
 
 2. Decompiled Game Logic (`game/`) — NO LICENSE GRANTED
 -------------------------------------------------------
