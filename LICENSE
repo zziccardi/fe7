@@ -1,21 +1,33 @@
-MIT License
+fe7 Licensing & Intellectual Property Notice
+============================================
 
+This repository uses a split licensing model that distinguishes between original
+runtime/tooling infrastructure and reverse-engineered game logic:
+
+1. Original Runtime & Tooling (`runtime/`, `tools/`)
+----------------------------------------------------
 Copyright (c) 2026 fe7 contributors
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+All original code under `runtime/` and `tools/` is licensed under the GNU
+General Public License v3.0 (GPL-3.0). See `LICENSE-GPLv3` for the full license
+text.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. Decompiled Game Logic (`game/`) — NO LICENSE GRANTED
+-------------------------------------------------------
+Code under `game/` is a reverse-engineered behavioral reimplementation of
+*Fire Emblem: The Blazing Blade* (FE7 US, `AE7E`), originally developed by
+Intelligent Systems and published by Nintendo.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+- `game/` is **explicitly excluded** from the GPL-3.0 license above.
+- No license or permission is granted to redistribute, sublicense, or
+  commercialize Nintendo / Intelligent Systems' intellectual property.
+- `game/` is provided strictly for non-commercial educational, research, and
+  software preservation purposes, and requires a user-supplied, legally obtained
+  FE7 US ROM (no copyrighted ROM bytes, graphics, scripts, or audio are included
+  in this repository).
+
+3. Third-Party Components (`third_party/`)
+------------------------------------------
+- Patches and integration files for `libmgba` under `third_party/mgba/` remain
+  under the Mozilla Public License 2.0 (MPL-2.0) until fallback retirement.
+- All other third-party dependencies retain their respective upstream licenses.
