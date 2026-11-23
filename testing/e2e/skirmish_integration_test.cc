@@ -949,43 +949,31 @@ class SkirmishIntegrationTest : public ::testing::Test {
     return *GbaPtr<const uint32_t>(proc.addr + kProcPayloadCallbackOffset);
   }
 
-  // Registers lightweight native shims for 6 non-AI helpers called during
-  // `CpDecideMain` / `AiTrySpecialAction` (`SetWorkingBmMap`,
-  // `MapAddInBoundedRange`, `MapClearOther`, `MapFloodRangeExtend`,
-  // `RemoveUnitFromBallista`, `BattleGenerateSimulation`), keeping the entire
-  // enemy turn 100% pure-native with zero ARM7TDMI fallback.
+  // Registers minimal stubs for the 4 un-decompiled battle-init leaf helpers
+  // called by native `BattleGenerateSimulation`
+  // (`SetBattleUnitTerrainBonusesAuto`, `DisableAllLightRunes`,
+  // `ApplyLightRuneTerrainAlt`, `SetBattleUnitWeapon`). All tactical
+  // map/ballista/battle-gen helpers now run natively via
+  // `RegisterAllNativeFunctions()`.
   void RegisterEnemyAiTurnShims() {
-    RegisterNative(kAddrSetWorkingBmMap,
-                   [](uint32_t r0, uint32_t, uint32_t, uint32_t,
-                      const uint32_t* absl_nullable) -> uint32_t {
-                     *GbaPtr<uint32_t>(kWorkingMapAddr) = r0;
-                     return 0u;
-                   });
-    RegisterNative(kAddrMapAddInBoundedRange,
-                   [](uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
-                      const uint32_t* absl_nullable) -> uint32_t {
-                     const int x = static_cast<int16_t>(r0);
-                     const int y = static_cast<int16_t>(r1);
-                     const int min_r = static_cast<int16_t>(r2);
-                     const int max_r = static_cast<int16_t>(r3);
-                     MapAddInRange(x, y, max_r, 1);
-                     if (min_r > 1) {
-                       MapAddInRange(x, y, min_r - 1, -1);
-                     }
-                     return 0u;
-                   });
-    RegisterNative(kAddrMapClearOther, StubNoOpZero);
-    RegisterNative(kAddrMapFloodRangeExtend, StubNoOpZero);
-    RegisterNative(kAddrRemoveUnitFromBallista, StubNoOpZero);
-    RegisterNative(kAddrBattleGenerateSimulation,
+    RegisterNative(kAddrSetBattleUnitTerrainBonusesAuto, StubNoOpZero);
+    RegisterNative(kAddrDisableAllLightRunes, StubNoOpZero);
+    RegisterNative(kAddrApplyLightRuneTerrainAlt, StubNoOpZero);
+    RegisterNative(kAddrSetBattleUnitWeapon,
                    [](uint32_t r0, uint32_t r1, uint32_t, uint32_t,
                       const uint32_t* absl_nullable) -> uint32_t {
-                     GbaPtr<BattleUnit> actor(kBattleActorAddr);
-                     GbaPtr<BattleUnit> target(kBattleTargetAddr);
-                     InitBattleUnit(actor, GbaPtr<const Unit>(r0));
-                     InitBattleUnit(target, GbaPtr<const Unit>(r1));
-                     ComputeBattleUnitStats(actor, target);
-                     ComputeBattleUnitStats(target, actor);
+                     GbaPtr<BattleUnit> bu(r0);
+                     const int slot = static_cast<int32_t>(r1);
+                     const uint16_t item = (slot >= 0 && slot < 5)
+                                               ? bu->unit.items[slot]
+                                               : bu->unit.items[0];
+                     bu->weapon = item;
+                     bu->weapon_before = item;
+                     bu->weapon_attributes = GetItemAttributes(item);
+                     bu->weapon_type = static_cast<uint8_t>(GetItemKind(item));
+                     bu->weapon_slot_index = (slot >= 0 && slot < 5)
+                                                 ? static_cast<uint8_t>(slot)
+                                                 : 0u;
                      return 0u;
                    });
   }
@@ -1455,7 +1443,10 @@ TEST_F(SkirmishIntegrationTest, FullEnemyAiTurnDecisionAndExecution) {
   CpDecideMain();
   EXPECT_EQ(dec->action_performed, 1);
   EXPECT_EQ(dec->action_id, kAiActionAttack);
-  EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(lyn->id));
+  // With real native BattleGenerateSimulation + BattleUnwind, axe-wielding
+  // Brigand B scores higher attacking lance-wielding Kent (WTA advantage) than
+  // sword-wielding Lyn (WTA disadvantage).
+  EXPECT_EQ(dec->unit_target_id, static_cast<uint8_t>(Kent()->id));
 
   // --- Phase C: Staff healer dispatches Heal staff via AiTrySpecialAction ---
   //   Row y=3 layout:  . . L . B A . .   (wounded Brigand A adjacent at (5,3))

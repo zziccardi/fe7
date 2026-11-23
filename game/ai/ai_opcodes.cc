@@ -682,9 +682,8 @@ bool AiFindNearestTerrainInList(GbaPtr<const uint8_t> terrain_list,
   return FindNearestTerrainInListImpl(terrain_list, flags, out_pos.get());
 }
 
-bool AiFindNearestAdjacentToTerrainInList(GbaPtr<const uint8_t> terrain_list,
-                                          uint32_t flags,
-                                          GbaPtr<AiPos> out_pos) {
+bool AiFindNearestAdjacentToTerrainInListOut(GbaPtr<const uint8_t> terrain_list,
+                                             uint32_t flags, AiPos* out_pos) {
   int min_cost = 0xFF;
   const MapSize size = GetMapSize();
   GbaPtr<GbaPtr<uint8_t>> range = MapRange();
@@ -728,7 +727,14 @@ bool AiFindNearestAdjacentToTerrainInList(GbaPtr<const uint8_t> terrain_list,
   return min_cost != 0xFF;
 }
 
-bool AiFindNearestDoorOrChest(uint32_t flags, GbaPtr<AiPos> out_pos) {
+bool AiFindNearestAdjacentToTerrainInList(GbaPtr<const uint8_t> terrain_list,
+                                          uint32_t flags,
+                                          GbaPtr<AiPos> out_pos) {
+  return AiFindNearestAdjacentToTerrainInListOut(terrain_list, flags,
+                                                 out_pos.get());
+}
+
+bool AiFindNearestDoorOrChestOut(uint32_t flags, AiPos* out_pos) {
   int min_cost = 0xFF;
   uint8_t target_count = 0u;
   const MapSize size = GetMapSize();
@@ -805,6 +811,10 @@ bool AiFindNearestDoorOrChest(uint32_t flags, GbaPtr<AiPos> out_pos) {
     *GbaPtr<uint8_t>(kAiStateAddr + 0x86u) = 5u;
   }
   return min_cost != 0xFF;
+}
+
+bool AiFindNearestDoorOrChest(uint32_t flags, GbaPtr<AiPos> out_pos) {
+  return AiFindNearestDoorOrChestOut(flags, out_pos.get());
 }
 
 bool AiFindBestAdjacentPosition(int x, int y, uint32_t score_fn_addr,

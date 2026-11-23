@@ -57,3 +57,70 @@ fe7_cc_test(
         "//runtime:gba_ptr",
     ],
 )
+
+fe7_game_cc_library(
+    name = "ballista",
+    srcs = ["ballista.cc"],
+    hdrs = ["ballista.h"],
+    deps = [
+        ":trap",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/phase:phase",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "ballista_test",
+    srcs = ["ballista_test.cc"],
+    deps = [
+        ":ballista",
+        ":trap",
+        "//game:item_hdr",
+        "//game:unit_hdr",
+        "//game/item:item",
+        "//game/phase:phase",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_game_cc_library(
+    name = "map_range",
+    srcs = ["map_range.cc"],
+    hdrs = ["map_range.h"],
+    deps = [
+        ":ballista",
+        ":map",
+        ":trap",
+        "//game:unit_hdr",
+        "//game/action:action",
+        "//game/engine:clock",
+        "//game/engine:rng",
+        "//game/item:item",
+        "//game/phase:phase",
+        "//game/unit:unit",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+        "@abseil-cpp//absl/base:nullability",
+    ],
+)
+
+fe7_cc_test(
+    name = "map_range_test",
+    srcs = ["map_range_test.cc"],
+    deps = [
+        ":map",
+        ":map_range",
+        "//game:unit_hdr",
+        "//game/engine:clock",
+        "//game/engine:rng",
+        "//runtime:dispatch",
+        "//runtime:gba_ptr",
+    ],
+)
+

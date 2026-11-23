@@ -10,6 +10,7 @@
 #include <cstdint>
 
 #include "game/ai/ai.h"
+#include "game/battle/battle_gen.h"
 #include "runtime/gba_ptr.h"
 
 namespace fe7 {
@@ -18,8 +19,6 @@ namespace fe7 {
 inline constexpr uint32_t kAiBallistaItemIdsAddr = 0x081D3B64u;
 inline constexpr uint32_t kAiRecoveryTerrainsAddr = 0x08B98AC4u;
 
-inline constexpr uint32_t kAddrBattleGenerateSimulation = 0x080283A4u;
-inline constexpr uint32_t kAddrBattleGenerateBallistaSimulation = 0x080283F0u;
 inline constexpr uint32_t kAddrGetEmptyBallistaItemAt = 0x080346C8u;
 inline constexpr uint32_t kAddrRemoveUnitFromBallista = 0x080347A8u;
 

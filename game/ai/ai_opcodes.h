@@ -12,6 +12,7 @@
 #include <cstdint>
 
 #include "game/ai/ai.h"
+#include "game/map/map_range.h"
 #include "runtime/gba_ptr.h"
 
 namespace fe7 {
@@ -24,7 +25,6 @@ inline constexpr uint32_t kAiObstacleTerrainsAddr = 0x08B970C4u;
 
 // External helper ROM addresses called via GbaCall() (until decompiled in
 // subsequent batches).
-inline constexpr uint32_t kAddrMapFloodPostProcess = 0x0801A1E8u;
 inline constexpr uint32_t kAddrAiPerformAttack = 0x08038558u;
 inline constexpr uint32_t kAddrAiPerformEscape = 0x08039894u;
 inline constexpr uint32_t kAddrAiTrySpecialAction = 0x0803AAD8u;
@@ -90,7 +90,10 @@ bool AiFindNearestTerrainInList(GbaPtr<const uint8_t> terrain_list,
 bool AiFindNearestAdjacentToTerrainInList(GbaPtr<const uint8_t> terrain_list,
                                           uint32_t flags,
                                           GbaPtr<AiPos> out_pos);
+bool AiFindNearestAdjacentToTerrainInListOut(GbaPtr<const uint8_t> terrain_list,
+                                             uint32_t flags, AiPos* out_pos);
 bool AiFindNearestDoorOrChest(uint32_t flags, GbaPtr<AiPos> out_pos);
+bool AiFindNearestDoorOrChestOut(uint32_t flags, AiPos* out_pos);
 bool AiFindBestAdjacentPosition(int x, int y, uint32_t score_fn_addr,
                                 GbaPtr<AiPos> out_pos);
 bool AiFindNearestLootableTile(GbaPtr<AiPos> out_pos,

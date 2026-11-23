@@ -24,11 +24,11 @@ This project uses an incremental **Ship-of-Theseus** replacement strategy (see [
 
 - **Phase 1 (Complete):** Bazel Bzlmod + Clang C++20 build, `GbaPtr<T>`, `DispatchTable`, SHA-1 ROM loader, `libmgba` HAL, SDL3 interactive frontend (`//runtime:fe7_native`), headless runner (`//runtime:fe7_headless`), CI, and coding-rule/format linters.
 - **Phase 2 (Complete):** Trace recorder (`runtime/trace_recorder.{h,cc}`), differential harness (`runtime/diff_harness.{h,cc}`, `//runtime:fe7_diff`), FE8U/FE6J cross-matcher (`tools/match_fe8.py`), PyGhidra setup (`tools/ghidra_mcp/setup_ghidra.py`), `tools/verify_fn.py`, and two-tier E2E testing (`//testing/e2e:skirmish_integration_test` + `runtime/input_script.{h,cc}` + `tools/e2e_lockstep.py`).
-- **Phase 3 (In Progress — 492 / 6,568 ROM functions differentially verified, 0 mismatches — *Core Enemy AI Engine Complete*):**
+- **Phase 3 (In Progress — 555 / 6,568 ROM functions differentially verified, 0 mismatches — *Tactical Gameplay & Enemy AI Complete*):**
   - Canonical headers: `game/proc.h`, `game/unit.h`, `game/item.h`, `game/battle.h`, central registration in `game/register_all.{h,cc}`.
   - **Wave 1 (`game/engine/`):** RNG (`rng`, 10), Game Clock (`clock`, 4), and 6C Proc Scheduler (`proc`, 23 + 26-opcode bytecode interpreter) — **37 functions**.
-  - **Wave 2 (`game/unit/`, `game/item/`, `game/battle/`, `game/map/`):** Unit lookup/lifecycle/stat getters/overflow/PID stats (`unit`, 29), Items & weapon stats (`item`, 43), Battle formulas & WTA (`battle`, 20), Map & BFS pathfinding incl. IWRAM `MapFloodCoreRam` & `GetUnitMovementCost` (`map`, 18) — **110 functions**.
-  - **Wave 3 — Tactical Gameplay & Core Enemy AI Engine (`game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/`):** Battle simulation & hit unwinding (`battle_sim`, 22), Post-battle EXP/level-up/promotion/WEXP (`battle_exp`, 26), Turn flow, phase management, chapter events & flags (`phase`, 31), Supports & affinity bonuses (`support`, 22), Traps, obstacles, light runes & fog/entity maps (`trap`, 27), Unit actions, rescue/drop/give, autolevel & stat boosters (`action`, 26), and the complete **Core Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28 — **197 AI functions** covering `0x08034E00..0x0803B000`) *(492 unique verified in `fe7_diff`, 28 ASan test suites)*.
+  - **Wave 2 (`game/unit/`, `game/item/`, `game/battle/`, `game/map/`):** Unit lookup/lifecycle/stat getters/overflow/PID stats (`unit`, 29), Items & weapon stats (`item`, 43), Battle formulas & WTA (`battle`, 20), Map & BFS pathfinding incl. IWRAM `MapFloodCoreRam` & `GetUnitMovementCost` (`map`, 18), plus Map range overlays, move-script backtracking & danger-zone helpers (`map_range`, 13) — **123 functions**.
+  - **Wave 3 — Tactical Gameplay & Complete Enemy AI Engine (`game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/`):** Battle simulation & hit unwinding (`battle_sim`, 22), Battle simulation/real-combat entrypoints (`battle_gen`, 9), Post-battle EXP/level-up/promotion/WEXP (`battle_exp`, 26), Turn flow, phase management, chapter events & flags (`phase`, 31), Supports & affinity bonuses (`support`, 22), Traps, obstacles, light runes & fog/entity maps (`trap`, 27), Ballista trap query/creation/mount/dismount (`ballista`, 8), Unit actions, rescue/drop/give, autolevel & stat boosters (`action`, 26), and the complete **Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28, `ai_staff_loot` 33 — **230 AI functions** covering `0x08034E00..0x0803C100`) *(555 unique verified in `fe7_diff`, 32 ASan test suites)*.
 
 ## Building & Testing
 
@@ -41,7 +41,7 @@ python3 tools/check_format.py
 python3 tools/check_agent_rules.py
 python3 -m unittest discover -s tools -p '*_test.py' -v
 
-# Live differential verification against a local FE7 US ROM (492/492 functions)
+# Live differential verification against a local FE7 US ROM (555/555 functions)
 bazel run --config=headless //runtime:fe7_diff -- --rom=/path/to/fe7_us.gba --fuzz_iters=256
 
 # Headless lockstep & top-N fallback profiling (with optional .fe7in input script)
