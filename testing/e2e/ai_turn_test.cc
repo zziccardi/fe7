@@ -134,5 +134,65 @@ TEST_F(SkirmishIntegrationTest, ProcLoopDrivenPhaseAndAiExecution) {
       ProcFind(GbaPtr<const ProcScr>(kSyntheticProcScrAddr))));
 }
 
+TEST_F(SkirmishIntegrationTest, ThreeFactionBlueGreenRedSkirmish) {
+  RandInit(kRngSeedThreeFaction);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
+  RegisterChar({.id = kPidGreenAlly, .default_jid = kJidCavalier});
+
+  // Place Blue Lyn (3,3), Green Ally (4,4), and Red Brigand A (5,4).
+  //   Row y=3: . . . L F . . .
+  //   Row y=4: . . . . G A . .   (G = Green Ally, A = Red Brigand A)
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  PlaceUnit(lyn, 3, 3);
+  PlaceUnit(Kent(), 0, 0);
+  PlaceUnit(BrigandB(), 7, 7);
+  PlaceUnit(brigand_a, 5, 4);
+  ConfigureUnit(kUnitIdGreenAlly, {
+                                      .pid = kPidGreenAlly,
+                                      .jid = kJidCavalier,
+                                      .level = 3,
+                                      .x = 4,
+                                      .y = 4,
+                                      .hp = 24,
+                                      .pow = 10,
+                                      .skl = 9,
+                                      .spd = 10,
+                                      .def = 8,
+                                      .weapon_kind = ItemKind::kLance,
+                                      .weapon_iid = kIidIronLance,
+                                  });
+  SyncUnitMap();
+  GbaPtr<Unit> ally = GreenAlly();
+
+  // 1. Verify 3-faction allegiance & unit counts.
+  EXPECT_EQ(CountUnitsByFaction(kFactionGreen), 1);
+  EXPECT_TRUE(AreUnitIdsAllied(lyn->id, ally->id));
+  EXPECT_FALSE(AreUnitIdsAllied(lyn->id, brigand_a->id));
+  EXPECT_FALSE(AreUnitIdsAllied(ally->id, brigand_a->id));
+  EXPECT_FALSE(IsSameAllegiance(lyn->id, ally->id));
+
+  // 2. Rotate Blue -> Red -> Green via `BmMainChangePhase`.
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionRed);
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionGreen);
+
+  // 3. During Green Phase, Green AI executes Script A and targets hostile Red
+  //    Brigand A (wounded to 6 HP) while never targeting allied Blue Lyn.
+  brigand_a->hp = 6;
+  ally->ai_a = 0u;
+  ally->ai_a_pc = 0u;
+  PrepareAiTurn(ally);
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionAttack, .target = brigand_a});
+
+  // 4. Wrapping Green -> Blue advances the turn counter to Turn 2.
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionBlue);
+  EXPECT_EQ(GetTurnNumber(), 2u);
+}
+
 }  // namespace
 }  // namespace fe7::e2e

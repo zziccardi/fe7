@@ -66,6 +66,7 @@ inline constexpr int kUnitIdLyn = 1;
 inline constexpr int kUnitIdKent = 2;
 inline constexpr int kUnitIdExtraBlue1 = 3;
 inline constexpr int kUnitIdExtraBlue2 = 4;
+inline constexpr int kUnitIdGreenAlly = 0x41;
 inline constexpr int kUnitIdBrigandA = 0x81;
 inline constexpr int kUnitIdBrigandB = 0x82;
 
@@ -76,6 +77,7 @@ inline constexpr uint8_t kPidFlorina = 3;
 inline constexpr uint8_t kPidFiora = 4;
 inline constexpr uint8_t kPidBrigandA = 10;
 inline constexpr uint8_t kPidBrigandB = 11;
+inline constexpr uint8_t kPidGreenAlly = 12;
 
 inline constexpr uint8_t kJidLord = 1;
 inline constexpr uint8_t kJidCavalier = 2;
@@ -144,6 +146,7 @@ inline constexpr int kRngSeedSpecialCombat = 0x9ABC;
 inline constexpr int kRngSeedTacticalFog = 0xC0FFEE;
 inline constexpr int kRngSeedStatusFlow = 0x57A705;
 inline constexpr int kRngSeedBallista = 0xBA1115;
+inline constexpr int kRngSeedThreeFaction = 0x3FAC70;
 inline constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
 inline constexpr int kRngSeedProcLoop = 0x6C0001;
 
@@ -272,6 +275,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
   // --- Roster & unit manipulation ---
   GbaPtr<Unit> Lyn() const;
   GbaPtr<Unit> Kent() const;
+  GbaPtr<Unit> GreenAlly() const;
   GbaPtr<Unit> BrigandA() const;
   GbaPtr<Unit> BrigandB() const;
 

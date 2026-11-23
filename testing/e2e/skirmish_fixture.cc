@@ -110,6 +110,10 @@ GbaPtr<Unit> SkirmishIntegrationTest::Kent() const {
   return GetUnit(kUnitIdKent);
 }
 
+GbaPtr<Unit> SkirmishIntegrationTest::GreenAlly() const {
+  return GetUnit(kUnitIdGreenAlly);
+}
+
 GbaPtr<Unit> SkirmishIntegrationTest::BrigandA() const {
   return GetUnit(kUnitIdBrigandA);
 }
