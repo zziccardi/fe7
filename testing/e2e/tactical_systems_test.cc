@@ -6,6 +6,7 @@
 #include "game/action/action.h"
 #include "game/ai/ai.h"
 #include "game/ai/ai_combat.h"
+#include "game/ai/ai_cp.h"
 #include "game/ai/ai_decide.h"
 #include "game/battle.h"
 #include "game/battle/battle_exp.h"
@@ -14,6 +15,7 @@
 #include "game/item.h"
 #include "game/item/item.h"
 #include "game/map/ballista.h"
+#include "game/map/map.h"
 #include "game/map/trap.h"
 #include "game/phase/phase.h"
 #include "game/proc.h"
@@ -248,6 +250,56 @@ TEST_F(SkirmishIntegrationTest, BallistaMountCombatAmmoAndDismount) {
   EXPECT_EQ(lyn->flags & kUnitFlagInBallista, 0u);
   EXPECT_EQ(ballista->x, lyn->x);
   EXPECT_EQ(ballista->y, lyn->y);
+}
+
+TEST_F(SkirmishIntegrationTest, ChokepointPathfindingAndZoneOfControlBlocking) {
+  RandInit(kRngSeedChokepoint);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
+
+  // Vertical wall at x=3 with a single 1-tile chokepoint at (3, 3):
+  //   y=3: . L . K . B . .   (Kent holds choke; 1-HP Lyn behind him; B right)
+  LoadTerrainFromAscii({
+      "...#....",  // y=0
+      "...#....",  // y=1
+      "...#....",  // y=2
+      "........",  // y=3: 1-tile chokepoint at (3,3)
+      "...#....",  // y=4
+      "...#....",  // y=5
+      "...#....",  // y=6
+      "...#....",  // y=7
+  });
+
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> kent = Kent();
+  GbaPtr<Unit> brigand_b = BrigandB();
+
+  lyn->hp = 1;  // Tempting 1-HP target behind the chokepoint
+  PlaceUnit(lyn, 1, 3);
+  PlaceUnit(kent, 3, 3);
+  PlaceUnit(brigand_b, 5, 3);
+  PlaceUnit(BrigandA(), 7, 7);
+
+  // 1. Friendly pass-through: Blue Lyn can flood THROUGH Blue Kent at (3, 3)
+  //    to reach (4, 3) on the far side of the wall.
+  MapFloodUnit(AsConst(lyn));
+  EXPECT_LE(MovementMap()[3][4], 5u);
+
+  // 2. Zone-of-control blocking: Red Brigand B cannot pass through Blue Kent
+  //    at (3, 3), leaving (2, 3) and Lyn's tile (1, 3) completely unreachable.
+  MapFloodUnit(AsConst(brigand_b));
+  EXPECT_LE(MovementMap()[3][4], 5u);
+  EXPECT_EQ(MovementMap()[3][2], kMoveCostUnreachable);
+  EXPECT_EQ(MovementMap()[3][1], kMoveCostUnreachable);
+
+  // 3. Enemy AI is forced to attack Kent at the chokepoint rather than
+  //    walking through him to finish off 1-HP Lyn.
+  SetPhaseFaction(kFactionRed);
+  brigand_b->ai_a = 0u;
+  brigand_b->ai_a_pc = 0u;
+  PrepareAiTurn(brigand_b);
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionAttack, .target = kent});
 }
 
 }  // namespace

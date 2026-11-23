@@ -167,6 +167,7 @@ inline constexpr int kRngSeedFe7CombatModifiers = 0xFE7C0B;
 inline constexpr int kRngSeedTacticalFog = 0xC0FFEE;
 inline constexpr int kRngSeedStatusFlow = 0x57A705;
 inline constexpr int kRngSeedBallista = 0xBA1115;
+inline constexpr int kRngSeedChokepoint = 0xC40CE1;
 inline constexpr int kRngSeedThreeFaction = 0x3FAC70;
 inline constexpr int kRngSeedThiefLoot = 0x741EF1;
 inline constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
