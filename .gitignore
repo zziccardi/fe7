@@ -1,7 +1,8 @@
-# ROMs, saves, and reference corpora (never commit copyrighted assets)
+# ROMs, saves, traces, and reference corpora (never commit copyrighted assets)
 *.gba
 *.sav
 *.srm
+*.fe7t
 corpus/
 .ghidra/
 

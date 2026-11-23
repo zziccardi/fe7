@@ -260,8 +260,13 @@ followed by `ComputeBattleUnitEffectiveStats`:
   bonuses from `gAffinityBonusTable` (`0x08C9A1C0`) scaled by rank (C=1, B=2,
   A=3) and halved after summing both units' affinities.
 
-### Enemy AI (`game/ai/ai.{h,cc}`)
+### Enemy AI (`game/ai/`: `ai`, `ai_decide`, `ai_script`, `ai_opcodes`, `ai_actions`, `ai_combat`, `ai_cp`, `ai_staff_loot`)
 
+- Top-level `CpDecide` / `CpPerform` state-machine procs (`ai_cp`) drive each
+  unit's turn through recovery/suspend checks, Script A & Script B bytecode
+  execution (`ai_script`, `ai_opcodes`), special actions (staves, stealing,
+  chest/door looting, antitoxin, ballista mounting in `ai_staff_loot` /
+  `ai_actions`), and combat target selection (`ai_combat`, `ai_decide`).
 - Stores the selected move/action in `gAiDecision` (`0x0203A97C`).
 - Evaluates candidate `(x_move, y_move, target_id, item_slot)` tuples via
   `AiComputeCombatScore`, summing **8 weighted components** driven by
