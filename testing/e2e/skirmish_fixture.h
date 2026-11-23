@@ -66,8 +66,10 @@ inline constexpr int kUnitIdLyn = 1;
 inline constexpr int kUnitIdKent = 2;
 inline constexpr int kUnitIdExtraBlue1 = 3;
 inline constexpr int kUnitIdExtraBlue2 = 4;
+inline constexpr int kUnitIdGreenAlly = 0x41;
 inline constexpr int kUnitIdBrigandA = 0x81;
 inline constexpr int kUnitIdBrigandB = 0x82;
+inline constexpr int kUnitIdBrigandC = 0x83;
 
 // Synthetic character / class / item IDs.
 inline constexpr uint8_t kPidLyn = 1;
@@ -76,6 +78,8 @@ inline constexpr uint8_t kPidFlorina = 3;
 inline constexpr uint8_t kPidFiora = 4;
 inline constexpr uint8_t kPidBrigandA = 10;
 inline constexpr uint8_t kPidBrigandB = 11;
+inline constexpr uint8_t kPidGreenAlly = 12;
+inline constexpr uint8_t kPidBrigandC = 13;
 
 inline constexpr uint8_t kJidLord = 1;
 inline constexpr uint8_t kJidCavalier = 2;
@@ -83,6 +87,7 @@ inline constexpr uint8_t kJidBrigand = 3;
 inline constexpr uint8_t kJidBladeLord = 4;
 inline constexpr uint8_t kJidAssassin = 5;
 inline constexpr uint8_t kJidPegasusKnight = 6;
+inline constexpr uint8_t kJidThief = 7;
 
 inline constexpr uint8_t kIidIronSword = 1;
 inline constexpr uint8_t kIidIronLance = 2;
@@ -91,8 +96,15 @@ inline constexpr uint8_t kIidSteelAxe = 4;
 inline constexpr uint8_t kIidAngelicRobe = 5;
 inline constexpr uint8_t kIidLancereaver = 6;
 inline constexpr uint8_t kIidLuna = 7;
+inline constexpr uint8_t kIidBallista = 8;
+inline constexpr uint8_t kIidBraveSword = 9;
+inline constexpr uint8_t kIidEclipse = 10;
+inline constexpr uint8_t kIidNosferatu = 11;
+inline constexpr uint8_t kIidIronRune = 12;
 inline constexpr uint8_t kIidHealStaff = 0x4Au;
 inline constexpr uint8_t kIidVulnerary = 0x6Bu;
+inline constexpr uint8_t kIidAntitoxin = 0x6Du;
+inline constexpr uint8_t kIidLockpick = 0x6Eu;
 
 inline constexpr int kMapW = 8;
 inline constexpr int kMapH = 8;
@@ -101,37 +113,51 @@ inline constexpr int kMapH = 8;
 inline constexpr uint8_t kTerrainWall = 0;
 inline constexpr uint8_t kTerrainPlains = 1;
 inline constexpr uint8_t kTerrainForest = 2;
+inline constexpr uint8_t kTerrainChest = 0x21u;
 inline constexpr uint8_t kMoveCostUnreachable = 0xFFu;
 
-// Weapon rank / support rank / AI flag constants for readable test assertions.
+// Weapon rank / support rank / weapon effect / chapter mode / AI flag
+// constants.
 inline constexpr uint8_t kWexpERank = 1u;
 inline constexpr uint8_t kWexpSRank = 251u;
 inline constexpr int kSupportRankC = 1;
 inline constexpr int kSupportRankB = 2;
 inline constexpr int kSupportRankA = 3;
+inline constexpr uint8_t kWeaponEffectHpSteal = 2u;
+inline constexpr uint8_t kWeaponEffectHalfHp = 3u;
+inline constexpr uint8_t kChapterModeLyn = 1u;
+inline constexpr uint8_t kChapterModeEliwood = 2u;
 inline constexpr uint8_t kAiFlagRecovery = 1u;
 inline constexpr uint8_t kEncodedRange1To1 = 0x11u;
 inline constexpr uint8_t kEncodedRange1To2 = 0x12u;
+inline constexpr uint8_t kEncodedRange3To10 = 0x3Au;
 
 // PlayStatus / AiState / Proc field offsets (private to fixture helpers).
 inline constexpr uint32_t kPlayStatusVisionOffset = 0x0Du;
 inline constexpr uint32_t kPlayStatusFactionOffset = 0x0Fu;
 inline constexpr uint32_t kPlayStatusTurnOffset = 0x10u;
+inline constexpr uint32_t kPlayStatusChapterModeOffset = 0x1Bu;
+inline constexpr uint32_t kPlayStatusTacticianByteOffset = 0x2Bu;
+inline constexpr uint32_t kPlayStatusTacticianStarsOffset = 0x2Cu;
 inline constexpr uint32_t kPlayStatusConfig2Offset = 0x41u;
 inline constexpr uint32_t kAiStateDecideStepOffset = 0x79u;
 inline constexpr uint32_t kAiStateDangerFilledOffset = 0x7Au;
 inline constexpr uint32_t kAiStateRecoveryModeOffset = 0x7Bu;
 inline constexpr uint32_t kAiStateHealThresholdOffset = 0x7Cu;
 inline constexpr uint32_t kAiStateFlagsOffset = 0x7Du;
+inline constexpr uint32_t kAiStateSpecialItemFlagsOffset = 0x80u;
 inline constexpr uint32_t kProcPayloadCallbackOffset = 0x2Cu;
 
-// AI action IDs, recovery modes, and script opcodes.
+// AI action IDs, recovery modes, special-item bits, and script opcodes.
 inline constexpr uint8_t kAiActionWait = 0u;
 inline constexpr uint8_t kAiActionAttack = 1u;
+inline constexpr uint8_t kAiActionSteal = 3u;
 inline constexpr uint8_t kAiActionStaff = 5u;
 inline constexpr uint8_t kAiActionUseItem = 6u;
 inline constexpr uint8_t kAiRecoveryModeDefault = 0u;
 inline constexpr uint8_t kAiRecoveryModeStationary = 2u;
+inline constexpr uint32_t kAiSpecialItemLootBit = 2u;
+inline constexpr uint32_t kAiSpecialItemAntitoxinBit = 4u;
 inline constexpr uint8_t kAiScriptOpGoto = 0x03u;
 inline constexpr uint8_t kAiScriptOpAttack = 0x05u;
 
@@ -139,9 +165,15 @@ inline constexpr uint8_t kAiScriptOpAttack = 0x05u;
 inline constexpr int kRngSeedMultiTurn = 0x1234;
 inline constexpr int kRngSeedWeaponBreak = 0x5678;
 inline constexpr int kRngSeedSpecialCombat = 0x9ABC;
+inline constexpr int kRngSeedFe7CombatModifiers = 0xFE7C0B;
 inline constexpr int kRngSeedTacticalFog = 0xC0FFEE;
 inline constexpr int kRngSeedStatusFlow = 0x57A705;
+inline constexpr int kRngSeedBallista = 0xBA1115;
+inline constexpr int kRngSeedChokepoint = 0xC40CE1;
+inline constexpr int kRngSeedThreeFaction = 0x3FAC70;
+inline constexpr int kRngSeedThiefLoot = 0x741EF1;
 inline constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
+inline constexpr int kRngSeedMultiUnitAi = 0xA13001;
 inline constexpr int kRngSeedProcLoop = 0x6C0001;
 
 // Converts a mutable `GbaPtr<T>` to `GbaPtr<const T>` without `.addr` noise.
@@ -165,6 +197,7 @@ struct ItemSpec {
   uint8_t crit = 0;
   uint8_t encoded_range = 0;
   uint8_t required_wexp = 0;
+  uint8_t weapon_effect = 0;
   uint8_t wexp_gain = 0;
 };
 
@@ -269,8 +302,10 @@ class SkirmishIntegrationTest : public ::testing::Test {
   // --- Roster & unit manipulation ---
   GbaPtr<Unit> Lyn() const;
   GbaPtr<Unit> Kent() const;
+  GbaPtr<Unit> GreenAlly() const;
   GbaPtr<Unit> BrigandA() const;
   GbaPtr<Unit> BrigandB() const;
+  GbaPtr<Unit> BrigandC() const;
 
   void ConfigureUnit(int unit_id, const UnitSetupOptions& opts);
   void PlaceUnit(GbaPtr<Unit> unit, int x, int y, bool end_turn = false);
@@ -295,6 +330,8 @@ class SkirmishIntegrationTest : public ::testing::Test {
   uint16_t GetTurnNumber() const;
   void SetTurnNumber(uint16_t turn);
   void SetAutoEndTurn(bool enabled);
+  void SetTacticianState(bool enabled, uint8_t affinity_id, uint16_t raw_stars,
+                         uint8_t chapter_mode = kChapterModeEliwood);
   SupportBonuses ComputeSupportBonuses(GbaPtr<const Unit> unit) const;
 
   // --- Combat exchange driver ---
@@ -310,6 +347,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
   void RecordAiDecision(const AiDecisionOptions& opts);
   void ExpectAiDecision(const AiDecisionExpectation& expected) const;
   void SetAiHealThreshold(uint8_t percent);
+  void SetAiSpecialItemFlags(uint32_t flags);
   bool FindBestAiPosition(AiPos* absl_nonnull out);
   uint32_t ScoreAiCombat(uint8_t x, uint8_t y, GbaPtr<const Unit> target,
                          uint16_t item_slot = 0);
@@ -323,6 +361,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
   void WriteAiScriptCmd(uint32_t rom_addr, const AiScriptCmdSpec& spec);
   void RegisterEnemyAiTurnShims();
   void InitEnemyAiTurnRomTables();
+  void InitThiefLootRomTables();
 
   std::vector<uint8_t> ewram_;
   std::vector<uint8_t> iwram_;

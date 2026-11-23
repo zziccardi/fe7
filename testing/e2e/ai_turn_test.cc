@@ -5,15 +5,19 @@
 
 #include "game/ai/ai.h"
 #include "game/ai/ai_actions.h"
+#include "game/ai/ai_combat.h"
 #include "game/ai/ai_cp.h"
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_script.h"
+#include "game/ai/ai_staff_loot.h"
+#include "game/battle.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item.h"
 #include "game/phase/phase.h"
 #include "game/proc.h"
 #include "game/unit.h"
+#include "game/unit/unit.h"
 #include "gtest/gtest.h"
 #include "runtime/gba_ptr.h"
 #include "testing/e2e/skirmish_fixture.h"
@@ -132,6 +136,221 @@ TEST_F(SkirmishIntegrationTest, ProcLoopDrivenPhaseAndAiExecution) {
   ProcRun(proc);
   EXPECT_FALSE(static_cast<bool>(
       ProcFind(GbaPtr<const ProcScr>(kSyntheticProcScrAddr))));
+}
+
+TEST_F(SkirmishIntegrationTest, ThreeFactionBlueGreenRedSkirmish) {
+  RandInit(kRngSeedThreeFaction);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
+  RegisterChar({.id = kPidGreenAlly, .default_jid = kJidCavalier});
+
+  // Place Blue Lyn (3,3), Green Ally (4,4), and Red Brigand A (5,4).
+  //   Row y=3: . . . L F . . .
+  //   Row y=4: . . . . G A . .   (G = Green Ally, A = Red Brigand A)
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  PlaceUnit(lyn, 3, 3);
+  PlaceUnit(Kent(), 0, 0);
+  PlaceUnit(BrigandB(), 7, 7);
+  PlaceUnit(brigand_a, 5, 4);
+  ConfigureUnit(kUnitIdGreenAlly, {
+                                      .pid = kPidGreenAlly,
+                                      .jid = kJidCavalier,
+                                      .level = 3,
+                                      .x = 4,
+                                      .y = 4,
+                                      .hp = 24,
+                                      .pow = 10,
+                                      .skl = 9,
+                                      .spd = 10,
+                                      .def = 8,
+                                      .weapon_kind = ItemKind::kLance,
+                                      .weapon_iid = kIidIronLance,
+                                  });
+  SyncUnitMap();
+  GbaPtr<Unit> ally = GreenAlly();
+
+  // 1. Verify 3-faction allegiance & unit counts.
+  EXPECT_EQ(CountUnitsByFaction(kFactionGreen), 1);
+  EXPECT_TRUE(AreUnitIdsAllied(lyn->id, ally->id));
+  EXPECT_FALSE(AreUnitIdsAllied(lyn->id, brigand_a->id));
+  EXPECT_FALSE(AreUnitIdsAllied(ally->id, brigand_a->id));
+  EXPECT_FALSE(IsSameAllegiance(lyn->id, ally->id));
+
+  // 2. Rotate Blue -> Red -> Green via `BmMainChangePhase`.
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionRed);
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionGreen);
+
+  // 3. During Green Phase, Green AI executes Script A and targets hostile Red
+  //    Brigand A (wounded to 6 HP) while never targeting allied Blue Lyn.
+  brigand_a->hp = 6;
+  ally->ai_a = 0u;
+  ally->ai_a_pc = 0u;
+  PrepareAiTurn(ally);
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionAttack, .target = brigand_a});
+
+  // 4. Wrapping Green -> Blue advances the turn counter to Turn 2.
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionBlue);
+  EXPECT_EQ(GetTurnNumber(), 2u);
+}
+
+TEST_F(SkirmishIntegrationTest, ThiefAiStealChestLootAndAntitoxin) {
+  RandInit(kRngSeedThiefLoot);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
+  InitThiefLootRomTables();
+
+  // Treasure-room 8x8 map with a Chest ('C') at (6, 2) behind a wall corridor.
+  LoadTerrainFromAscii({
+      "........",  // y=0
+      "........",  // y=1
+      "....#.C.",  // y=2: Chest at (6,2)
+      "....#...",  // y=3
+      "........",  // y=4
+      "........",  // y=5
+      "........",  // y=6
+      "........",  // y=7
+  });
+
+  // Fast Red Thief (spd 14) with Iron Sword, Lockpick (slot 1), Antitoxin (2).
+  GbaPtr<Unit> thief = BrigandB();
+  thief->jinfo = GetJobInfo(kJidThief);
+  thief->spd = 14;
+  thief->items[0] = MakeItem(kIidIronSword, 46);
+  thief->items[1] = MakeItem(kIidLockpick, 15);
+  thief->items[2] = MakeItem(kIidAntitoxin, 3);
+  PlaceUnit(thief, 3, 4);
+
+  // Slower Blue Kent (spd 9) carrying a stealable Vulnerary in slot 1.
+  GbaPtr<Unit> kent = Kent();
+  kent->items[1] = MakeItem(kIidVulnerary, 3);
+  PlaceUnit(kent, 2, 4);
+  PlaceUnit(Lyn(), 0, 0);
+  PlaceUnit(BrigandA(), 7, 7);
+
+  SetPhaseFaction(kFactionRed);
+
+  // 1. Thief floods movement & spots Kent's Vulnerary via `AiTryStealAction`.
+  EXPECT_EQ(AiGetBestStealableItemSlot(AsConst(kent)), 1);
+  PrepareAiTurn(thief);
+  AiMapFloodRangeUnitMov(thief);
+  EXPECT_TRUE(AiTryStealAction());
+  ExpectAiDecision(
+      {.action_id = kAiActionSteal, .target = kent, .item_slot = 1});
+
+  // 2. Poisoning the Thief triggers `AiTryUseAntitoxin` for slot 2.
+  SetUnitStatus(thief, static_cast<int>(UnitStatus::kPoison));
+  SetAiSpecialItemFlags(kAiSpecialItemAntitoxinBit);
+  PrepareAiTurn(thief);
+  AiTryUseAntitoxin(/*slot=*/2);
+  ExpectAiDecision({.action_id = kAiActionUseItem, .item_slot = 2});
+
+  // 3. Clearing poison and placing the Thief near the chest triggers
+  //    `AiTryUseChestKeyOrLockpick` to move onto (6, 2) and loot with slot 1.
+  SetUnitStatus(thief, static_cast<int>(UnitStatus::kNone));
+  PlaceUnit(thief, 5, 3);
+  SetAiSpecialItemFlags(kAiSpecialItemLootBit);
+  PrepareAiTurn(thief);
+  AiTryUseChestKeyOrLockpick(/*slot=*/1);
+  ExpectAiDecision({.action_id = kAiActionUseItem, .item_slot = 1});
+  GbaPtr<const AiDecision> dec(kAiDecisionAddr);
+  EXPECT_EQ(dec->x_move, 6u);
+  EXPECT_EQ(dec->y_move, 2u);
+}
+
+TEST_F(SkirmishIntegrationTest, MultiUnitSequentialEnemyPhase) {
+  RandInit(kRngSeedMultiUnitAi);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
+  RegisterChar({.id = kPidBrigandC, .default_jid = kJidBrigand});
+
+  // 3 Red units act sequentially in a single Enemy Phase without leaking stale
+  // `gAiState` or `gAiDecision` between turns:
+  //   Row y=3: . . L . B . . .   (Lyn at (2,3), Brigand B at (4,3))
+  //   Row y=4: . . K . . . . .   (Kent at (2,4))
+  //   Row y=5: . . . . . A C .   (Wounded Brigand A at (5,5), Healer C at
+  //   (6,5))
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> kent = Kent();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  GbaPtr<Unit> brigand_b = BrigandB();
+  GbaPtr<Proc> proc(kProcsAddr);
+
+  PlaceUnit(lyn, 2, 3);
+  PlaceUnit(kent, 2, 4);
+  PlaceUnit(brigand_a, 5, 5);
+  PlaceUnit(brigand_b, 4, 3);
+  ConfigureUnit(kUnitIdBrigandC, {
+                                     .pid = kPidBrigandC,
+                                     .jid = kJidBrigand,
+                                     .level = 2,
+                                     .x = 6,
+                                     .y = 5,
+                                     .hp = 20,
+                                     .pow = 7,
+                                     .skl = 6,
+                                     .spd = 6,
+                                     .def = 4,
+                                     .weapon_kind = ItemKind::kAxe,
+                                     .weapon_iid = kIidIronAxe,
+                                 });
+  GbaPtr<Unit> brigand_c = BrigandC();
+  SetWeaponExp(brigand_c, ItemKind::kStaff, kWexpSRank);
+  brigand_c->items[1] = MakeItem(kIidHealStaff, 30);
+  SyncUnitMap();
+
+  EXPECT_EQ(CountUnitsByFaction(kFactionRed), 3);
+  SetPhaseFaction(kFactionRed);
+
+  // --- Unit 1: Wounded Brigand A recovers with Vulnerary (slot 1) ---
+  brigand_a->hp = 4;
+  brigand_a->items[1] = MakeItem(kIidVulnerary, 3);
+  PrepareAiTurn(brigand_a, {.recovery_mode = kAiRecoveryModeStationary});
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionUseItem, .item_slot = 1});
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformUseItem));
+  PlaceUnit(brigand_a, brigand_a->x, brigand_a->y, /*end_turn=*/true);
+
+  // --- Unit 2: Healthy Brigand B attacks Kent via Script A + real combat ---
+  brigand_b->ai_a = 0u;
+  brigand_b->ai_a_pc = 0u;
+  PrepareAiTurn(brigand_b);
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionAttack, .target = kent});
+
+  GbaPtr<const AiDecision> dec(kAiDecisionAddr);
+  PlaceUnit(brigand_b, dec->x_move, dec->y_move);
+  const int kent_hp_before = kent->hp;
+  RunCombatExchange(brigand_b, kent, kBattleConfigReal);
+  EXPECT_LT(kent->hp, kent_hp_before);
+  PlaceUnit(brigand_b, brigand_b->x, brigand_b->y, /*end_turn=*/true);
+
+  // --- Unit 3: Healer Brigand C dispatches Heal staff on wounded Brigand A ---
+  MarkUnitForRecovery(brigand_a);
+  SetAiHealThreshold(80);
+  PrepareAiTurn(brigand_c);
+  EXPECT_TRUE(AiTrySpecialAction(ThumbAddr(kAddrAiIsUnitEnemy)));
+  ExpectAiDecision({.action_id = kAiActionStaff, .target = brigand_a});
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformStaff));
+  PlaceUnit(brigand_c, brigand_c->x, brigand_c->y, /*end_turn=*/true);
+
+  // All 3 Red units completed their turn; phase cycles Red -> Green -> Blue
+  // Turn 2 cleanly.
+  EXPECT_NE(brigand_a->flags & kUnitFlagTurnEnded, 0u);
+  EXPECT_NE(brigand_b->flags & kUnitFlagTurnEnded, 0u);
+  EXPECT_NE(brigand_c->flags & kUnitFlagTurnEnded, 0u);
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionGreen);
+  EXPECT_EQ(CountUnitsByFaction(kFactionGreen), 0);
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionBlue);
+  EXPECT_EQ(GetTurnNumber(), 2u);
 }
 
 }  // namespace
