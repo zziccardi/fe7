@@ -298,6 +298,19 @@ void SkirmishIntegrationTest::SetAutoEndTurn(bool enabled) {
   }
 }
 
+void SkirmishIntegrationTest::SetTacticianState(bool enabled,
+                                                uint8_t affinity_id,
+                                                uint16_t raw_stars,
+                                                uint8_t chapter_mode) {
+  WriteRom<uint32_t>(kTacticianAffinityTableAddr, affinity_id);
+  *GbaPtr<uint8_t>(kPhasePlayStatusAddr + kPlayStatusChapterModeOffset) =
+      chapter_mode;
+  *GbaPtr<uint8_t>(kPhasePlayStatusAddr + kPlayStatusTacticianByteOffset) =
+      enabled ? 1u : 0u;
+  *GbaPtr<uint16_t>(kPhasePlayStatusAddr + kPlayStatusTacticianStarsOffset) =
+      static_cast<uint16_t>(raw_stars << 4);
+}
+
 SupportBonuses SkirmishIntegrationTest::ComputeSupportBonuses(
     GbaPtr<const Unit> unit) const {
   SupportBonuses out{};
@@ -473,6 +486,7 @@ void SkirmishIntegrationTest::RegisterItem(const ItemSpec& spec) {
   info.crit = spec.crit;
   info.encoded_range = spec.encoded_range;
   info.required_wexp = spec.required_wexp;
+  info.weapon_effect = spec.weapon_effect;
   info.wexp_gain = spec.wexp_gain;
   WriteRom(kIInfoTableAddr + static_cast<uint32_t>(spec.id) * sizeof(IInfo),
            info);

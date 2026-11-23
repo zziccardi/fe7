@@ -331,5 +331,111 @@ TEST_F(SkirmishIntegrationTest,
   EXPECT_EQ(lyn->pow, pow_before + 2);
 }
 
+TEST_F(SkirmishIntegrationTest,
+       Fe7CombatModifiersTacticianDanceBraveEclipseNosferatuIronRune) {
+  RandInit(kRngSeedFe7CombatModifiers);
+
+  RegisterItem({.id = kIidBraveSword,
+                .kind = ItemKind::kSword,
+                .attributes = kItemAttrWeapon | kItemAttrBrave,
+                .max_uses = 30,
+                .might = 9,
+                .hit = 100,
+                .weight = 5,
+                .encoded_range = kEncodedRange1To1,
+                .required_wexp = kWexpERank,
+                .wexp_gain = 1});
+  RegisterItem({.id = kIidEclipse,
+                .kind = ItemKind::kDark,
+                .attributes = kItemAttrWeapon | kItemAttrMagic,
+                .max_uses = 5,
+                .might = 0,
+                .hit = 100,
+                .weight = 12,
+                .encoded_range = kEncodedRange3To10,
+                .required_wexp = kWexpERank,
+                .weapon_effect = kWeaponEffectHalfHp,
+                .wexp_gain = 1});
+  RegisterItem({.id = kIidNosferatu,
+                .kind = ItemKind::kDark,
+                .attributes = kItemAttrWeapon | kItemAttrMagic,
+                .max_uses = 20,
+                .might = 10,
+                .hit = 100,
+                .weight = 14,
+                .encoded_range = kEncodedRange1To2,
+                .required_wexp = kWexpERank,
+                .weapon_effect = kWeaponEffectHpSteal,
+                .wexp_gain = 1});
+  RegisterItem({.id = kIidIronRune,
+                .kind = ItemKind::kItem,
+                .attributes = kItemAttrNegateCrit,
+                .max_uses = 1});
+
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  PlaceUnit(lyn, 3, 3);
+  GbaPtr<const BattleUnit> actor(kBattleActorAddr);
+  GbaPtr<const BattleUnit> target(kBattleTargetAddr);
+
+  // 1. FE7 Tactician stars: matching Wind affinity (2) with 60 raw stars (+5
+  //    bonus) boosts Lyn's Hit & Avoid by +5 in Eliwood Mode, and disables in
+  //    Lyn Mode (chapter_mode == 1).
+  SetTacticianState(/*enabled=*/false, /*affinity_id=*/2, /*raw_stars=*/60);
+  RunCombatExchange(lyn, brigand_a, kBattleConfigSimulate);
+  const int16_t base_hit = actor->battle_hit_rate;
+  const int16_t base_avo = actor->battle_avoid_rate;
+
+  SetTacticianState(/*enabled=*/true, /*affinity_id=*/2, /*raw_stars=*/60,
+                    kChapterModeEliwood);
+  RunCombatExchange(lyn, brigand_a, kBattleConfigSimulate);
+  EXPECT_EQ(actor->battle_hit_rate, base_hit + 5);
+  EXPECT_EQ(actor->battle_avoid_rate, base_avo + 5);
+
+  SetTacticianState(/*enabled=*/true, /*affinity_id=*/2, /*raw_stars=*/60,
+                    kChapterModeLyn);
+  RunCombatExchange(lyn, brigand_a, kBattleConfigSimulate);
+  EXPECT_EQ(actor->battle_hit_rate, base_hit);
+  EXPECT_EQ(actor->battle_avoid_rate, base_avo);
+  SetTacticianState(/*enabled=*/false, /*affinity_id=*/2, /*raw_stars=*/0);
+
+  // 2. Dance-ring Attack buff (+10 Atk) and Iron Rune (forces incoming
+  //    effective crit to 0).
+  const int16_t base_atk = actor->battle_attack;
+  SetUnitStatus(lyn, static_cast<int>(UnitStatus::kAttack));
+  brigand_a->items[1] = MakeItem(kIidIronRune, 1);
+  RunCombatExchange(lyn, brigand_a, kBattleConfigSimulate);
+  EXPECT_EQ(actor->battle_attack, base_atk + 10);
+  EXPECT_EQ(actor->battle_effective_crit_rate, 0);
+  SetUnitStatus(lyn, static_cast<int>(UnitStatus::kNone));
+
+  // 3. Brave Sword unwinds 2 consecutive actor strikes (hit 0 marked Brave,
+  //    hit 1 still non-retaliation) before Brigand A retaliates on hit 2.
+  lyn->items[0] = MakeItem(kIidBraveSword, 30);
+  brigand_a->hp = 40;
+  brigand_a->max_hp = 40;
+  RunCombatExchange(lyn, brigand_a, kBattleConfigSimulate);
+  GbaPtr<const BattleHit> hits(kBattleHitsAddr);
+  EXPECT_NE(hits[0].attributes & kBattleHitAttrBrave, 0);
+  EXPECT_EQ(hits[1].info & kBattleHitInfoRetaliation, 0);
+  EXPECT_NE(hits[2].info & kBattleHitInfoRetaliation, 0);
+
+  // 4. Eclipse halves target HP (20 -> 10 damage), zeroes defender defense,
+  //    and cannot follow-up.
+  SetWeaponExp(lyn, ItemKind::kDark, kWexpERank);
+  lyn->items[0] = MakeItem(kIidEclipse, 5);
+  brigand_a->hp = 20;
+  RunCombatExchange(lyn, brigand_a, kBattleConfigSimulate);
+  EXPECT_EQ(actor->battle_attack, 10);
+  EXPECT_EQ(target->battle_defense, 0);
+
+  // 5. Nosferatu drains HP on hit, healing a wounded attacker.
+  lyn->items[0] = MakeItem(kIidNosferatu, 20);
+  lyn->hp = 5;
+  brigand_a->hp = 20;
+  RunCombatExchange(lyn, brigand_a, kBattleConfigReal);
+  EXPECT_GT(lyn->hp, 5);
+}
+
 }  // namespace
 }  // namespace fe7::e2e
