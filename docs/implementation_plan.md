@@ -29,10 +29,10 @@ flowchart TD
 
 ---
 
-## User Review Required
+## Key Constraints & Design Invariants
 
 > [!IMPORTANT]
-> **ROM Loading & Legal Boundary:** No copyrighted ROM bytes, extracted graphics, dialogue scripts, or music samples from *Fire Emblem 7* will be committed to the repository. The binary accepts **any ROM file path** via `--rom <path>` (or UI file picker/config) and validates **file size (16 MiB) + SHA-1 (`c735fdbb9e8abe19e0c6a44708df19acc962e204`)** rather than hardcoding a filename. All reference repos (`fireemblem8u`, `fireemblem6j`, `FireEmblem7J`, `fe7_us`) live in a gitignored `corpus/` directory for research and cross-matching only.
+> **ROM Loading & Legal Boundary:** No copyrighted ROM bytes, extracted graphics, dialogue scripts, or music samples from *Fire Emblem 7* are committed to the repository. The binary accepts **any ROM file path** via `--rom <path>` (or UI file picker/config) and validates **file size (16 MiB) + SHA-1 (`c735fdbb9e8abe19e0c6a44708df19acc962e204`)** rather than hardcoding a filename. All reference repos (`fireemblem8u`, `fireemblem6j`, `FireEmblem7J`, `fe7_us`) live in a gitignored `corpus/` directory for research and cross-matching only.
 
 > [!IMPORTANT]
 > **Google C++ Style Guide & Human-Gated Headers (`game/*.h`):**
@@ -48,36 +48,24 @@ flowchart TD
 
 ---
 
-## Resolved Decisions
+## Core Project Decisions
 
 - **License:** Split license — **GPL-3.0** for original runtime, tooling & test suites (`runtime/`, `tools/`, `testing/`), **no license granted** (explicitly excluded; non-commercial educational/preservation only) for decompiled game logic (`game/`), and file-level **MPL-2.0** for pinned `third_party/mgba` patches until Phase 4/5 retirement.
 - **Build System:** **Bazel (Bzlmod)** with Clang + C++20, GoogleTest and Abseil (`abseil-cpp`) from BCR, strict `visibility` boundaries between `game/` and `runtime/`, and focused `BUILD.bazel` overlays for `libmgba` GBA core + `SDL3`.
-- **Repository:** New **private** GitHub repository named `fe7`.
 
 ---
 
-## Proposed Changes
+## Architecture & Implementation Phases
 
-Changes are organized into sequential phases.
-
----
-
-### Component 0: Repository Creation (`fe7`)
-
-#### [NEW] Private GitHub repository `fe7`
-- Create a new **private** GitHub repository named `fe7` via `create_github_repository` (requires this conversation to be attached to a Project).
-- Initialize with:
-  - `.gitignore` (explicitly ignoring `*.gba`, `*.sav`, `corpus/`, `bazel-*`, `.ghidra/`)
-  - `LICENSE` + `LICENSE-GPLv3` (split GPL-3.0 for `runtime/`, `tools/`, & `testing/`, explicit exclusion for `game/`)
-  - `README.md` (project overview, SHA-1 ROM requirement, architecture summary)
+Work is organized into sequential phases.
 
 ---
 
-### Component 1: Build System (Bazel + Clang), Google C++ Tooling & Agent Guardrails (Phase 1)
+### Component 1: Build System (Bazel + Clang), Google C++ Tooling & Agent Guardrails (Phase 1 — Complete)
 
 Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with per-target caching, strict `visibility` isolation, and automated CI linting for AI agents.
 
-#### [NEW] `MODULE.bazel`, `.bazelrc`, & `BUILD.bazel`
+#### [IMPLEMENTED] `MODULE.bazel`, `.bazelrc`, & `BUILD.bazel`
 - Pull `abseil-cpp`, `googletest`, `platforms`, and `rules_cc` via Bzlmod; wrap `libmgba`'s GBA core and `SDL3` with clean `third_party/` `BUILD.bazel` overlays.
 - Require **C++20** and **Clang** (`--repo_env=CC=clang`, `--repo_env=CXX=clang++`).
 - Enforce Google C++ Style Guide compiler flags + strict warnings in `.bazelrc` and `fe7_game_cc_library` Starlark macro:
@@ -102,7 +90,7 @@ Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with pe
   - `--config=release`: `-O2 -DNDEBUG`
   - `--config=headless`: strips SDL3 window/audio deps for 1,000+ FPS TAS/differential testing
 
-#### [NEW] `.clang-format`, `.clang-tidy`, & `tools/agent_rules.md`
+#### [IMPLEMENTED] `.clang-format`, `.clang-tidy`, & `tools/agent_rules.md`
 - `.clang-format`: `BasedOnStyle: Google`, `ColumnLimit: 80`.
 - **Strict Google "C-with-types" C++20 rules enforced by `clang-tidy` + `tools/check_agent_rules.py`:**
   - **Allowed in `game/`:** Free functions, POD structs with `static_assert(sizeof/offsetof)`, `GbaPtr<T>`, `GbaSpan<T>`, `ProcAs<T>()`, scoped enums, `constexpr` constants (`kCamelCase`), globals (`gCamelCase`), `kViewportWidth` / `kViewportHeight`, and zero-cost Abseil header annotations (`absl_nonnull`, `absl_nullable`).
@@ -114,11 +102,11 @@ Establish a deterministic, hermetic Bazel (Bzlmod) + Clang + C++20 build with pe
 
 Provide compile-time type safety on GBA pointers, hash-based ROM validation, and seamless two-way calls between native C++20 functions and the `libmgba` ARM7TDMI fallback CPU.
 
-#### [NEW] `runtime/rom_loader.h` & `runtime/rom_loader.cc`
+#### [IMPLEMENTED] `runtime/rom_loader.h` & `runtime/rom_loader.cc`
 - Accepts any file path (`--rom=<path>`), verifies size (`16 * 1024 * 1024` bytes) and computes **SHA-1**, accepting `c735fdbb9e8abe19e0c6a44708df19acc962e204` (FE7 US `AE7E`), returning `absl::Status` / `absl::StatusOr<RomImage>`.
 - Exposes a test-only `LoadSyntheticRom(std::span<const uint8_t>)` entry point for Phase 1 mock/unit tests so the full runtime + dispatch bridge is tested without requiring a retail ROM.
 
-#### [NEW] `runtime/gba_ptr.h` & `runtime/gba_ptr.cc`
+#### [IMPLEMENTED] `runtime/gba_ptr.h` & `runtime/gba_ptr.cc`
 Zero-cost typed wrapper around 32-bit GBA virtual addresses with debug bounds & alignment assertions:
 
 ```cpp
@@ -206,7 +194,7 @@ inline GbaPtr<SubProc> ProcAs(GbaPtr<BaseProc> p) {
 #endif  // FE7_RUNTIME_GBA_PTR_H_
 ```
 
-#### [NEW] `runtime/dispatch.h` & `runtime/dispatch.cc`
+#### [IMPLEMENTED] `runtime/dispatch.h` & `runtime/dispatch.cc`
 - O(1) lookup table mapping Thumb ROM halfword addresses (`0x08000000`–`0x08FFFFFF`) to registered native C++20 functions.
 - Handles **two-way interop**:
   - **Fallback → Native:** When mGBA's ARM/Thumb core branches (`BL`, `BX`, `BLX`, or `Proc` callback) to a registered address, mGBA invokes the native wrapper (`r0..r3` + stack), stores the return value in `r0`, and sets `PC = LR`.
@@ -235,7 +223,7 @@ sequenceDiagram
 
 ### Component 3: Owned `GbaHal`, `libmgba` Bridge, SDL3/ImGui Frontend, & Mock Unit Tests (Phase 1)
 
-#### [NEW] `runtime/gba_hal.h` & `runtime/mgba_hal.cc`
+#### [IMPLEMENTED] `runtime/gba_hal.h` & `runtime/mgba_hal.cc`
 - Explicit hardware APIs:
   - `hal::MmioRead16` / `hal::MmioWrite16`, `hal::VramWrite` / `hal::PalWrite` / `hal::OamWrite`
   - `hal::DmaCopy(channel, src_addr, dst_addr, ctrl)`
@@ -245,11 +233,11 @@ sequenceDiagram
   - `constexpr int kViewportWidth = 240; constexpr int kViewportHeight = 160;`
   - `hal::VideoSubmitFrame()` and `hal::TextHookDrawGlyph()` seam points (no-ops during Phases 1–4 lockstep).
 
-#### [NEW] `runtime/sdl_frontend.cc` & `runtime/tas_runner.cc`
+#### [IMPLEMENTED] `runtime/sdl_frontend.cc` & `runtime/tas_runner.cc`
 - **SDL3 interactive frontend (`fe7_native`):** Uses `absl::flags`, 60 Hz pacing, integer/aspect scaling, keyboard + SDL3 Gamepad input, `.sav` Flash/SRAM persistence, fast-forward toggle, instant save-state slots, and optional **ImGui debug overlay** (live RNG state, active `Proc` tree, hovered unit inspector, native vs. fallback execution % meter).
 - **Headless TAS runner (`fe7_headless`):** Uses `absl::flags`, runs `.fe7in` scripted GBA button input files without SDL video/audio, dumping per-frame 64-bit FNV-1a checkpoints of EWRAM, static IWRAM (`0x03000000..0x030077FF`), and the framebuffer.
 
-#### [NEW] Colocated `runtime/*_test.cc` (Phase 1 Mock / Synthetic Unit Tests via GoogleTest)
+#### [IMPLEMENTED] Colocated `runtime/*_test.cc` (Phase 1 Mock / Synthetic Unit Tests via GoogleTest)
 Validates the entire Phase 1 runtime **without needing a retail FE7 ROM**:
 - `runtime/gba_ptr_test.cc`: EWRAM/IWRAM/ROM resolution, pointer arithmetic, `ProcAs<T>()`, death tests for null/unaligned/out-of-bounds/MMIO-region dereferences.
 - `runtime/rom_loader_test.cc`: SHA-1 verification (rejects bad hash or wrong size regardless of filename; accepts valid hash under arbitrary filenames) via `absl::Status` / `absl::StatusOr`.

@@ -1,5 +1,8 @@
 # fe7
 
+[![CI](https://github.com/zziccardi/fe7/actions/workflows/ci.yml/badge.svg)](https://github.com/zziccardi/fe7/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Split%20GPL--3.0%20%2F%20No%20License%20(game%2F)-blue)](LICENSE)
+
 A faithful, native C++20 PC port of *Fire Emblem: The Blazing Blade* (**FE7 US, `AE7E`**) targeting Windows, Linux, and macOS.
 
 ## Legal & ROM Requirement
@@ -10,6 +13,18 @@ To run the game, you must provide your own legally obtained **FE7 US (`AE7E`)** 
 
 - **Expected Size:** `16,777,216` bytes (16 MiB)
 - **Expected SHA-1:** `c735fdbb9e8abe19e0c6a44708df19acc962e204`
+
+## Repository Layout
+
+```text
+fe7/
+├── game/          # Decompiled FE7 US C++20 subsystems + colocated unit tests
+├── runtime/       # GbaPtr<T>, GbaHal, libmgba bridge, dispatch, SDL3 & headless runners
+├── testing/e2e/   # Pure-native, zero-ROM multi-turn tactical E2E skirmish suites
+├── tools/         # Format/rule linters, FE8/FE6 cross-matcher, Ghidra & lockstep scripts
+├── docs/          # GBA hardware, Thumb-1, FE7 engine logic, workflow & roadmap guides
+└── third_party/   # Pinned libmgba dispatch-hook overlay & SDL3 Bazel build rules
+```
 
 ## Architecture Overview
 
@@ -30,10 +45,20 @@ This project uses an incremental **Ship-of-Theseus** replacement strategy (see [
   - **Wave 2 (`game/unit/`, `game/item/`, `game/battle/`, `game/map/`):** Unit lookup/lifecycle/stat getters/overflow/PID stats (`unit`, 29), Items & weapon stats (`item`, 45), Battle formulas & WTA (`battle`, 20), Map & BFS pathfinding incl. IWRAM `MapFloodCoreRam` & `GetUnitMovementCost` (`map`, 18), plus Map range overlays, move-script backtracking & danger-zone helpers (`map_range`, 13) — **125 functions**.
   - **Wave 3 — Tactical Gameplay & Complete Enemy AI Engine (`game/battle/`, `game/phase/`, `game/support/`, `game/map/`, `game/action/`, `game/ai/`):** Battle simulation & hit unwinding (`battle_sim`, 22), Battle simulation/real-combat entrypoints (`battle_gen`, 9), Post-battle EXP/level-up/promotion/WEXP (`battle_exp`, 26), Turn flow, phase management, chapter events & flags (`phase`, 31), Supports & affinity bonuses (`support`, 22), Traps, obstacles, light runes & fog/entity maps (`trap`, 27), Ballista trap query/creation/mount/dismount (`ballista`, 8), Unit actions, rescue/drop/give, autolevel & stat boosters (`action`, 26), and the complete **Enemy AI Engine** (`ai` 28, `ai_decide` 24, `ai_script` 30, `ai_opcodes` 41, `ai_actions` 28, `ai_combat` 18, `ai_cp` 28, `ai_staff_loot` 33 — **230 AI functions** covering `0x08034E00..0x0803C100`) *(563 registered native functions, 555 unique verified in `fe7_diff`, 34 ASan test suites)*.
 
+## Prerequisites
+
+- **Bazelisk** (automatically fetches Bazel `9.3.2` from `.bazelversion`)
+- **Clang 18+** (`libclang-rt-18-dev` on Ubuntu/Debian for `--config=asan`) and `clang-format`
+- **Python 3.10+** (for linters and verification scripts)
+- **No retail ROM is needed** to build or run the unit tests and pure-native E2E skirmishes (`--config=headless` also skips desktop SDL3 display dependencies)
+
 ## Building & Testing
 
 ```bash
-# Run all synthetic ASan/UBSan unit & pure-native E2E tests (no retail ROM required)
+# Quickstart: run the pure-native E2E tactical combat, systems & AI suite (no ROM required)
+bazel test --config=asan --config=headless //testing/e2e/...
+
+# Run all 34 synthetic ASan/UBSan unit & E2E test suites (no retail ROM required)
 bazel test --config=asan --config=headless //...
 
 # Style, agent guardrails, and Python tool tests
