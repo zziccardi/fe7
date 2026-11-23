@@ -16,6 +16,7 @@
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_opcodes.h"
 #include "game/ai/ai_script.h"
+#include "game/ai/ai_staff_loot.h"
 #include "game/battle.h"
 #include "game/battle/battle.h"
 #include "game/battle/battle_exp.h"
@@ -204,6 +205,9 @@ void SkirmishIntegrationTest::LoadTerrainFromAscii(
           break;
         case 'F':
           terrain[y][x] = kTerrainForest;
+          break;
+        case 'C':
+          terrain[y][x] = kTerrainChest;
           break;
         default:
           ADD_FAILURE() << "Unknown terrain glyph '" << ch << "' at (" << x
@@ -426,6 +430,10 @@ void SkirmishIntegrationTest::SetAiHealThreshold(uint8_t percent) {
   *GbaPtr<uint8_t>(kAiStateAddr + kAiStateHealThresholdOffset) = percent;
 }
 
+void SkirmishIntegrationTest::SetAiSpecialItemFlags(uint32_t flags) {
+  *GbaPtr<uint32_t>(kAiStateAddr + kAiStateSpecialItemFlagsOffset) = flags;
+}
+
 bool SkirmishIntegrationTest::FindBestAiPosition(AiPos* absl_nonnull out) {
   GbaPtr<AiPos> scratch(kScratchBestPosAddr);
   *scratch = {};
@@ -606,6 +614,33 @@ void SkirmishIntegrationTest::InitEnemyAiTurnRomTables() {
         kAiAdjacentOffsetsAddr + static_cast<uint32_t>(i) * 8u + 4u,
         kCardOffsets[i][1]);
   }
+}
+
+void SkirmishIntegrationTest::InitThiefLootRomTables() {
+  // Steal priority list: Vulnerary (0-terminated uint8_t list).
+  const uint8_t steal_list[2] = {kIidVulnerary, 0u};
+  std::memcpy(rom_.data() + (kAiStealPriorityListAddr - kRomBase), steal_list,
+              sizeof(steal_list));
+
+  // Chest terrain list (0-terminated) and passable foot cost for chests.
+  const uint8_t chest_list[2] = {kTerrainChest, 0u};
+  std::memcpy(rom_.data() + (kAiChestTerrainListAddr - kRomBase), chest_list,
+              sizeof(chest_list));
+  WriteRom<int8_t>(kMovTableFootAddr + kTerrainChest, int8_t{1});
+
+  // Cardinal offsets (int8_t[4][2]) used by AiTryStealAction.
+  const int8_t steal_offsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+  std::memcpy(rom_.data() + (kAiCardinalOffsetsAddr - kRomBase), steal_offsets,
+              sizeof(steal_offsets));
+
+  // Register Thief class + Antitoxin/Lockpick items.
+  RegisterJob({.id = kJidThief,
+               .mov = 6,
+               .con = 6,
+               .power_level = 2,
+               .attributes = kUnitAttrThief | kUnitAttrSteal});
+  RegisterItem({.id = kIidAntitoxin, .kind = ItemKind::kItem, .max_uses = 3});
+  RegisterItem({.id = kIidLockpick, .kind = ItemKind::kItem, .max_uses = 15});
 }
 
 void SkirmishIntegrationTest::InitRomTables() {

@@ -85,6 +85,7 @@ inline constexpr uint8_t kJidBrigand = 3;
 inline constexpr uint8_t kJidBladeLord = 4;
 inline constexpr uint8_t kJidAssassin = 5;
 inline constexpr uint8_t kJidPegasusKnight = 6;
+inline constexpr uint8_t kJidThief = 7;
 
 inline constexpr uint8_t kIidIronSword = 1;
 inline constexpr uint8_t kIidIronLance = 2;
@@ -96,6 +97,8 @@ inline constexpr uint8_t kIidLuna = 7;
 inline constexpr uint8_t kIidBallista = 8;
 inline constexpr uint8_t kIidHealStaff = 0x4Au;
 inline constexpr uint8_t kIidVulnerary = 0x6Bu;
+inline constexpr uint8_t kIidAntitoxin = 0x6Du;
+inline constexpr uint8_t kIidLockpick = 0x6Eu;
 
 inline constexpr int kMapW = 8;
 inline constexpr int kMapH = 8;
@@ -104,6 +107,7 @@ inline constexpr int kMapH = 8;
 inline constexpr uint8_t kTerrainWall = 0;
 inline constexpr uint8_t kTerrainPlains = 1;
 inline constexpr uint8_t kTerrainForest = 2;
+inline constexpr uint8_t kTerrainChest = 0x21u;
 inline constexpr uint8_t kMoveCostUnreachable = 0xFFu;
 
 // Weapon rank / support rank / AI flag constants for readable test assertions.
@@ -127,15 +131,19 @@ inline constexpr uint32_t kAiStateDangerFilledOffset = 0x7Au;
 inline constexpr uint32_t kAiStateRecoveryModeOffset = 0x7Bu;
 inline constexpr uint32_t kAiStateHealThresholdOffset = 0x7Cu;
 inline constexpr uint32_t kAiStateFlagsOffset = 0x7Du;
+inline constexpr uint32_t kAiStateSpecialItemFlagsOffset = 0x80u;
 inline constexpr uint32_t kProcPayloadCallbackOffset = 0x2Cu;
 
-// AI action IDs, recovery modes, and script opcodes.
+// AI action IDs, recovery modes, special-item bits, and script opcodes.
 inline constexpr uint8_t kAiActionWait = 0u;
 inline constexpr uint8_t kAiActionAttack = 1u;
+inline constexpr uint8_t kAiActionSteal = 3u;
 inline constexpr uint8_t kAiActionStaff = 5u;
 inline constexpr uint8_t kAiActionUseItem = 6u;
 inline constexpr uint8_t kAiRecoveryModeDefault = 0u;
 inline constexpr uint8_t kAiRecoveryModeStationary = 2u;
+inline constexpr uint32_t kAiSpecialItemLootBit = 2u;
+inline constexpr uint32_t kAiSpecialItemAntitoxinBit = 4u;
 inline constexpr uint8_t kAiScriptOpGoto = 0x03u;
 inline constexpr uint8_t kAiScriptOpAttack = 0x05u;
 
@@ -147,6 +155,7 @@ inline constexpr int kRngSeedTacticalFog = 0xC0FFEE;
 inline constexpr int kRngSeedStatusFlow = 0x57A705;
 inline constexpr int kRngSeedBallista = 0xBA1115;
 inline constexpr int kRngSeedThreeFaction = 0x3FAC70;
+inline constexpr int kRngSeedThiefLoot = 0x741EF1;
 inline constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
 inline constexpr int kRngSeedProcLoop = 0x6C0001;
 
@@ -317,6 +326,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
   void RecordAiDecision(const AiDecisionOptions& opts);
   void ExpectAiDecision(const AiDecisionExpectation& expected) const;
   void SetAiHealThreshold(uint8_t percent);
+  void SetAiSpecialItemFlags(uint32_t flags);
   bool FindBestAiPosition(AiPos* absl_nonnull out);
   uint32_t ScoreAiCombat(uint8_t x, uint8_t y, GbaPtr<const Unit> target,
                          uint16_t item_slot = 0);
@@ -330,6 +340,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
   void WriteAiScriptCmd(uint32_t rom_addr, const AiScriptCmdSpec& spec);
   void RegisterEnemyAiTurnShims();
   void InitEnemyAiTurnRomTables();
+  void InitThiefLootRomTables();
 
   std::vector<uint8_t> ewram_;
   std::vector<uint8_t> iwram_;
