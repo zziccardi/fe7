@@ -123,6 +123,10 @@ GbaPtr<Unit> SkirmishIntegrationTest::BrigandB() const {
   return GetUnit(kUnitIdBrigandB);
 }
 
+GbaPtr<Unit> SkirmishIntegrationTest::BrigandC() const {
+  return GetUnit(kUnitIdBrigandC);
+}
+
 void SkirmishIntegrationTest::ConfigureUnit(int unit_id,
                                             const UnitSetupOptions& opts) {
   GbaPtr<Unit> u = GetUnit(unit_id);

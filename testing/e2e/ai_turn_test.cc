@@ -10,6 +10,7 @@
 #include "game/ai/ai_decide.h"
 #include "game/ai/ai_script.h"
 #include "game/ai/ai_staff_loot.h"
+#include "game/battle.h"
 #include "game/engine/proc.h"
 #include "game/engine/rng.h"
 #include "game/item.h"
@@ -259,6 +260,97 @@ TEST_F(SkirmishIntegrationTest, ThiefAiStealChestLootAndAntitoxin) {
   GbaPtr<const AiDecision> dec(kAiDecisionAddr);
   EXPECT_EQ(dec->x_move, 6u);
   EXPECT_EQ(dec->y_move, 2u);
+}
+
+TEST_F(SkirmishIntegrationTest, MultiUnitSequentialEnemyPhase) {
+  RandInit(kRngSeedMultiUnitAi);
+  RegisterEnemyAiTurnShims();
+  InitEnemyAiTurnRomTables();
+  RegisterChar({.id = kPidBrigandC, .default_jid = kJidBrigand});
+
+  // 3 Red units act sequentially in a single Enemy Phase without leaking stale
+  // `gAiState` or `gAiDecision` between turns:
+  //   Row y=3: . . L . B . . .   (Lyn at (2,3), Brigand B at (4,3))
+  //   Row y=4: . . K . . . . .   (Kent at (2,4))
+  //   Row y=5: . . . . . A C .   (Wounded Brigand A at (5,5), Healer C at
+  //   (6,5))
+  GbaPtr<Unit> lyn = Lyn();
+  GbaPtr<Unit> kent = Kent();
+  GbaPtr<Unit> brigand_a = BrigandA();
+  GbaPtr<Unit> brigand_b = BrigandB();
+  GbaPtr<Proc> proc(kProcsAddr);
+
+  PlaceUnit(lyn, 2, 3);
+  PlaceUnit(kent, 2, 4);
+  PlaceUnit(brigand_a, 5, 5);
+  PlaceUnit(brigand_b, 4, 3);
+  ConfigureUnit(kUnitIdBrigandC, {
+                                     .pid = kPidBrigandC,
+                                     .jid = kJidBrigand,
+                                     .level = 2,
+                                     .x = 6,
+                                     .y = 5,
+                                     .hp = 20,
+                                     .pow = 7,
+                                     .skl = 6,
+                                     .spd = 6,
+                                     .def = 4,
+                                     .weapon_kind = ItemKind::kAxe,
+                                     .weapon_iid = kIidIronAxe,
+                                 });
+  GbaPtr<Unit> brigand_c = BrigandC();
+  SetWeaponExp(brigand_c, ItemKind::kStaff, kWexpSRank);
+  brigand_c->items[1] = MakeItem(kIidHealStaff, 30);
+  SyncUnitMap();
+
+  EXPECT_EQ(CountUnitsByFaction(kFactionRed), 3);
+  SetPhaseFaction(kFactionRed);
+
+  // --- Unit 1: Wounded Brigand A recovers with Vulnerary (slot 1) ---
+  brigand_a->hp = 4;
+  brigand_a->items[1] = MakeItem(kIidVulnerary, 3);
+  PrepareAiTurn(brigand_a, {.recovery_mode = kAiRecoveryModeStationary});
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionUseItem, .item_slot = 1});
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformUseItem));
+  PlaceUnit(brigand_a, brigand_a->x, brigand_a->y, /*end_turn=*/true);
+
+  // --- Unit 2: Healthy Brigand B attacks Kent via Script A + real combat ---
+  brigand_b->ai_a = 0u;
+  brigand_b->ai_a_pc = 0u;
+  PrepareAiTurn(brigand_b);
+  CpDecideMain();
+  ExpectAiDecision({.action_id = kAiActionAttack, .target = kent});
+
+  GbaPtr<const AiDecision> dec(kAiDecisionAddr);
+  PlaceUnit(brigand_b, dec->x_move, dec->y_move);
+  const int kent_hp_before = kent->hp;
+  RunCombatExchange(brigand_b, kent, kBattleConfigReal);
+  EXPECT_LT(kent->hp, kent_hp_before);
+  PlaceUnit(brigand_b, brigand_b->x, brigand_b->y, /*end_turn=*/true);
+
+  // --- Unit 3: Healer Brigand C dispatches Heal staff on wounded Brigand A ---
+  MarkUnitForRecovery(brigand_a);
+  SetAiHealThreshold(80);
+  PrepareAiTurn(brigand_c);
+  EXPECT_TRUE(AiTrySpecialAction(ThumbAddr(kAddrAiIsUnitEnemy)));
+  ExpectAiDecision({.action_id = kAiActionStaff, .target = brigand_a});
+  CpPerformDispatchAction(proc);
+  EXPECT_EQ(GetProcDispatchedCallback(proc), ThumbAddr(kAddrCpPerformStaff));
+  PlaceUnit(brigand_c, brigand_c->x, brigand_c->y, /*end_turn=*/true);
+
+  // All 3 Red units completed their turn; phase cycles Red -> Green -> Blue
+  // Turn 2 cleanly.
+  EXPECT_NE(brigand_a->flags & kUnitFlagTurnEnded, 0u);
+  EXPECT_NE(brigand_b->flags & kUnitFlagTurnEnded, 0u);
+  EXPECT_NE(brigand_c->flags & kUnitFlagTurnEnded, 0u);
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionGreen);
+  EXPECT_EQ(CountUnitsByFaction(kFactionGreen), 0);
+  EXPECT_EQ(BmMainChangePhase(), 1);
+  EXPECT_EQ(GetPhaseFaction(), kFactionBlue);
+  EXPECT_EQ(GetTurnNumber(), 2u);
 }
 
 }  // namespace

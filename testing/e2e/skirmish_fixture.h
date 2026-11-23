@@ -69,6 +69,7 @@ inline constexpr int kUnitIdExtraBlue2 = 4;
 inline constexpr int kUnitIdGreenAlly = 0x41;
 inline constexpr int kUnitIdBrigandA = 0x81;
 inline constexpr int kUnitIdBrigandB = 0x82;
+inline constexpr int kUnitIdBrigandC = 0x83;
 
 // Synthetic character / class / item IDs.
 inline constexpr uint8_t kPidLyn = 1;
@@ -78,6 +79,7 @@ inline constexpr uint8_t kPidFiora = 4;
 inline constexpr uint8_t kPidBrigandA = 10;
 inline constexpr uint8_t kPidBrigandB = 11;
 inline constexpr uint8_t kPidGreenAlly = 12;
+inline constexpr uint8_t kPidBrigandC = 13;
 
 inline constexpr uint8_t kJidLord = 1;
 inline constexpr uint8_t kJidCavalier = 2;
@@ -171,6 +173,7 @@ inline constexpr int kRngSeedChokepoint = 0xC40CE1;
 inline constexpr int kRngSeedThreeFaction = 0x3FAC70;
 inline constexpr int kRngSeedThiefLoot = 0x741EF1;
 inline constexpr int kRngSeedEnemyAiTurn = 0xA1E2E01;
+inline constexpr int kRngSeedMultiUnitAi = 0xA13001;
 inline constexpr int kRngSeedProcLoop = 0x6C0001;
 
 // Converts a mutable `GbaPtr<T>` to `GbaPtr<const T>` without `.addr` noise.
@@ -302,6 +305,7 @@ class SkirmishIntegrationTest : public ::testing::Test {
   GbaPtr<Unit> GreenAlly() const;
   GbaPtr<Unit> BrigandA() const;
   GbaPtr<Unit> BrigandB() const;
+  GbaPtr<Unit> BrigandC() const;
 
   void ConfigureUnit(int unit_id, const UnitSetupOptions& opts);
   void PlaceUnit(GbaPtr<Unit> unit, int x, int y, bool end_turn = false);

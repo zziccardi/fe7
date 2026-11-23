@@ -94,6 +94,7 @@ fe7_cc_test(
     srcs = ["ai_turn_test.cc"],
     deps = [
         ":skirmish_fixture",
+        "//game:battle_hdr",
         "//game:item_hdr",
         "//game:proc_hdr",
         "//game:unit_hdr",
